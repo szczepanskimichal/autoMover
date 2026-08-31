@@ -3,8 +3,8 @@
 WorldInfo {
 }
 Viewpoint {
-  orientation -0.08327326238626838 0.9609480689639603 -0.263902202578879 0.4363888269779527
-  position -64.83024647966116 4.061327005599704 40.09020929021744
+  orientation -0.2574303771430482 -0.334149259003585 0.906682895852427 4.668864661654229
+  position -3.1415055950880624 22.472391885428582 16.289234738137484
 }
 DirectionalLight {
   ambientIntensity 0.8
@@ -12,10 +12,10 @@ DirectionalLight {
   intensity 2
 }
 PointLight {
-  location 0 0 5
-  intensity 5
-  radius 20
   attenuation 0 0 1
+  intensity 5
+  location 0 0 5
+  radius 20
 }
 Solid {
   translation 0 0 -0.05
@@ -36,7 +36,6 @@ Solid {
 }
 Robot {
   translation 0 0 0.3
-
   children [
     Shape {
       appearance PBRAppearance {
@@ -47,14 +46,11 @@ Robot {
         size 1.2 0.8 0.2
       }
     }
-
-    # FRONT LEFT
     HingeJoint {
       jointParameters HingeJointParameters {
         axis 0 1 0
         anchor 0.45 0.48 0
       }
-
       device [
         RotationalMotor {
           name "front_left_motor"
@@ -62,12 +58,9 @@ Robot {
           maxTorque 50
         }
       ]
-
       endPoint Solid {
-        name "front_left_wheel"
         translation 0.45 0.48 0
         rotation 1 0 0 1.5708
-
         children [
           Shape {
             appearance PBRAppearance {
@@ -75,31 +68,27 @@ Robot {
               roughness 1
             }
             geometry Cylinder {
-              radius 0.18
               height 0.12
+              radius 0.18
             }
           }
         ]
-
+        name "front_left_wheel"
         boundingObject Cylinder {
-          radius 0.18
           height 0.12
+          radius 0.18
         }
-
         physics Physics {
           density -1
           mass 2
         }
       }
     }
-
-    # FRONT RIGHT
     HingeJoint {
       jointParameters HingeJointParameters {
         axis 0 1 0
         anchor 0.45 -0.48 0
       }
-
       device [
         RotationalMotor {
           name "front_right_motor"
@@ -107,12 +96,9 @@ Robot {
           maxTorque 50
         }
       ]
-
       endPoint Solid {
-        name "front_right_wheel"
         translation 0.45 -0.48 0
         rotation 1 0 0 1.5708
-
         children [
           Shape {
             appearance PBRAppearance {
@@ -120,31 +106,27 @@ Robot {
               roughness 1
             }
             geometry Cylinder {
-              radius 0.18
               height 0.12
+              radius 0.18
             }
           }
         ]
-
+        name "front_right_wheel"
         boundingObject Cylinder {
-          radius 0.18
           height 0.12
+          radius 0.18
         }
-
         physics Physics {
           density -1
           mass 2
         }
       }
     }
-
-    # REAR LEFT
     HingeJoint {
       jointParameters HingeJointParameters {
         axis 0 1 0
         anchor -0.45 0.48 0
       }
-
       device [
         RotationalMotor {
           name "rear_left_motor"
@@ -152,12 +134,9 @@ Robot {
           maxTorque 50
         }
       ]
-
       endPoint Solid {
-        name "rear_left_wheel"
         translation -0.45 0.48 0
         rotation 1 0 0 1.5708
-
         children [
           Shape {
             appearance PBRAppearance {
@@ -165,31 +144,27 @@ Robot {
               roughness 1
             }
             geometry Cylinder {
-              radius 0.18
               height 0.12
+              radius 0.18
             }
           }
         ]
-
+        name "rear_left_wheel"
         boundingObject Cylinder {
-          radius 0.18
           height 0.12
+          radius 0.18
         }
-
         physics Physics {
           density -1
           mass 2
         }
       }
     }
-
-    # REAR RIGHT
     HingeJoint {
       jointParameters HingeJointParameters {
         axis 0 1 0
         anchor -0.45 -0.48 0
       }
-
       device [
         RotationalMotor {
           name "rear_right_motor"
@@ -197,12 +172,9 @@ Robot {
           maxTorque 50
         }
       ]
-
       endPoint Solid {
-        name "rear_right_wheel"
         translation -0.45 -0.48 0
         rotation 1 0 0 1.5708
-
         children [
           Shape {
             appearance PBRAppearance {
@@ -210,45 +182,22 @@ Robot {
               roughness 1
             }
             geometry Cylinder {
-              radius 0.18
               height 0.12
+              radius 0.18
             }
           }
         ]
-
+        name "rear_right_wheel"
         boundingObject Cylinder {
-          radius 0.18
           height 0.12
+          radius 0.18
         }
-
         physics Physics {
           density -1
           mass 2
         }
       }
     }
-  ]
-
-  boundingObject Box {
-    size 1.2 0.8 0.2
-  }
-
-  physics Physics {
-    density -1
-    mass 25
-  }
-}
-    boundingObject Cylinder {
-      radius 0.18
-      height 0.12
-    }
-
-    physics Physics {
-      density -1
-      mass 2
-    }
-  }
-}
   ]
   boundingObject Box {
     size 1.2 0.8 0.2
