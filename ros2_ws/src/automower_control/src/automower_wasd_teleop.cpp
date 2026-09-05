@@ -94,6 +94,9 @@ int main(int argc, char **argv)
   auto simulateAugerOverloadPublisher = node->create_publisher<std_msgs::msg::Bool>(
       "/simulate_auger_overload",
       10);
+  auto resetAugerFaultPublisher = node->create_publisher<std_msgs::msg::Bool>(
+      "/reset_auger_fault",
+      10);
 
   TerminalRawMode rawMode;
 
@@ -112,6 +115,7 @@ int main(int argc, char **argv)
       << "g/h: chute left/right\n"
       << "y/u: deflector down/up\n"
       << "v: simulate auger overload\n"
+      << "j: reset latched auger fault\n"
       << "e: emergency stop toggle\n"
       << "x or space: stop\n"
       << "q: quit\n";
@@ -159,6 +163,9 @@ int main(int argc, char **argv)
   std_msgs::msg::Bool simulateAugerOverload;
   simulateAugerOverload.data = false;
 
+  std_msgs::msg::Bool resetAugerFault;
+  resetAugerFault.data = false;
+
   rclcpp::WallRate loopRate(20.0);
 
   // Keep command tuning local and readable instead of spreading literals across
@@ -189,6 +196,7 @@ int main(int argc, char **argv)
         << " throttle=" << engineThrottle.data
         << " auger=" << (augerEngaged.data ? "1" : "0")
         << " overload=" << (simulateAugerOverload.data ? "1" : "0")
+        << " reset=" << (resetAugerFault.data ? "1" : "0")
         << " chute=" << chutePosition.data
         << " deflector=" << deflectorPosition.data
         << " estop=" << (emergencyStop.data ? "1" : "0")
@@ -212,6 +220,8 @@ int main(int argc, char **argv)
     chutePositionPublisher->publish(chutePosition);
     deflectorPositionPublisher->publish(deflectorPosition);
     simulateAugerOverloadPublisher->publish(simulateAugerOverload);
+    resetAugerFaultPublisher->publish(resetAugerFault);
+    resetAugerFault.data = false;
   };
 
   printStatus(currentCmd);
@@ -377,6 +387,12 @@ int main(int argc, char **argv)
       case 'v':
       case 'V':
         simulateAugerOverload.data = !simulateAugerOverload.data;
+        printStatus(currentCmd);
+        break;
+
+      case 'j':
+      case 'J':
+        resetAugerFault.data = true;
         printStatus(currentCmd);
         break;
 

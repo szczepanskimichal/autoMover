@@ -131,6 +131,15 @@ public:
                 this,
                 std::placeholders::_1));
 
+    resetAugerFaultSubscription_ =
+        this->create_subscription<std_msgs::msg::Bool>(
+            "/reset_auger_fault",
+            10,
+            std::bind(
+                &AutomowerToolController::resetAugerFaultCallback,
+                this,
+                std::placeholders::_1));
+
     engineRunningPublisher_ =
         this->create_publisher<std_msgs::msg::Bool>(
             "/hybrid/engine_running",
@@ -176,6 +185,26 @@ public:
             "/hybrid/auger_overload",
             10);
 
+    augerInterlockOkPublisher_ =
+        this->create_publisher<std_msgs::msg::Bool>(
+            "/hybrid/auger_interlock_ok",
+            10);
+
+    augerFaultLatchedPublisher_ =
+        this->create_publisher<std_msgs::msg::Bool>(
+            "/hybrid/auger_fault_latched",
+            10);
+
+    augerResetRequiredPublisher_ =
+        this->create_publisher<std_msgs::msg::Bool>(
+            "/hybrid/auger_reset_required",
+            10);
+
+    augerStatusTextPublisher_ =
+        this->create_publisher<std_msgs::msg::String>(
+            "/hybrid/auger_status_text",
+            10);
+
     chutePositionPublisher_ =
         this->create_publisher<std_msgs::msg::Float32>(
             "/hybrid/chute_position",
@@ -206,6 +235,9 @@ private:
   static constexpr float ENGINE_MAX_RPM = 3600.0F;
   static constexpr float AUGER_MAX_RPM = 1200.0F;
   static constexpr float BATTERY_SOC_FLOOR = 0.20F;
+  static constexpr float MIN_AUGER_ENGAGE_THROTTLE = 0.25F;
+  static constexpr float MAX_FAULT_RESET_THROTTLE = 0.10F;
+  static constexpr float MIN_AUGER_VOLTAGE = 45.0F;
 
   void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
   {
@@ -292,6 +324,11 @@ private:
     simulateAugerOverload_ = msg->data;
   }
 
+  void resetAugerFaultCallback(const std_msgs::msg::Bool::SharedPtr msg)
+  {
+    resetAugerFaultRequested_ = msg->data;
+  }
+
   float clampUnit(float value) const
   {
     return std::clamp(value, 0.0F, 1.0F);
@@ -327,9 +364,32 @@ private:
         engineEnabledCommand_ &&
         !emergencyStopActive_;
 
-    const bool effectiveAugerEngaged =
+    const bool throttleReadyForAuger =
+        engineThrottleCommand_ >= MIN_AUGER_ENGAGE_THROTTLE;
+
+    const bool batteryReadyForAuger =
+        batteryVoltage_ >= MIN_AUGER_VOLTAGE;
+
+    const bool resetConditionsMet =
+        !simulateAugerOverload_ &&
+        !augerEngagedCommand_ &&
+        engineThrottleCommand_ <= MAX_FAULT_RESET_THROTTLE &&
+        !emergencyStopActive_;
+
+    if (resetAugerFaultRequested_ && resetConditionsMet)
+    {
+      augerFaultLatched_ = false;
+    }
+
+    const bool augerInterlockOk =
         augerModeActive &&
         engineRunning &&
+        throttleReadyForAuger &&
+        batteryReadyForAuger &&
+        !augerFaultLatched_;
+
+    const bool effectiveAugerEngaged =
+        augerInterlockOk &&
         augerEngagedCommand_;
 
     const float tractionDemand = clampUnit(
@@ -359,6 +419,13 @@ private:
     if (simulateAugerOverload_ && effectiveAugerEngaged)
     {
       tractionPowerLimit -= 0.25F;
+      augerFaultLatched_ = true;
+      augerEngagedCommand_ = false;
+    }
+
+    if (augerFaultLatched_)
+    {
+      tractionPowerLimit -= 0.10F;
     }
 
     tractionPowerLimit = std::clamp(tractionPowerLimit, 0.2F, 1.0F);
@@ -403,16 +470,31 @@ private:
         43.0F,
         50.8F);
 
+    const bool augerResetRequired = augerFaultLatched_;
+    const std::string augerStatusText =
+        buildAugerStatusText(
+            augerModeActive,
+            engineRunning,
+            throttleReadyForAuger,
+            batteryReadyForAuger,
+            augerResetRequired,
+            effectiveAugerEngaged);
+
     publishHybridTopics(
         engineRunning,
         effectiveAugerEngaged,
-        tractionPowerLimit);
+        tractionPowerLimit,
+        augerInterlockOk,
+        augerResetRequired,
+        augerStatusText);
+
+    resetAugerFaultRequested_ = false;
 
     RCLCPP_INFO_THROTTLE(
         this->get_logger(),
         *this->get_clock(),
         3000,
-        "mode=%s profile=%s engine=%s rpm=%.0f throttle=%.2f auger=%s auger_rpm=%.0f overload=%s battery=%.0f%% voltage=%.1fV traction_limit=%.2f chute=%.2f deflector=%.2f",
+        "mode=%s profile=%s engine=%s rpm=%.0f throttle=%.2f auger=%s auger_rpm=%.0f overload=%s fault=%s interlock=%s battery=%.0f%% voltage=%.1fV traction_limit=%.2f chute=%.2f deflector=%.2f status=%s",
         workMode_.c_str(),
         toolProfile_.c_str(),
         engineRunning ? "on" : "off",
@@ -421,17 +503,23 @@ private:
         effectiveAugerEngaged ? "engaged" : "off",
         augerRpm_,
         simulateAugerOverload_ ? "true" : "false",
+        augerFaultLatched_ ? "true" : "false",
+        augerInterlockOk ? "true" : "false",
         batterySoc_ * 100.0F,
         batteryVoltage_,
         tractionPowerLimit,
         chutePosition_,
-        deflectorPosition_);
+        deflectorPosition_,
+        augerStatusText.c_str());
   }
 
   void publishHybridTopics(
       bool engineRunning,
       bool effectiveAugerEngaged,
-      float tractionPowerLimit)
+      float tractionPowerLimit,
+      bool augerInterlockOk,
+      bool augerResetRequired,
+      const std::string &augerStatusText)
   {
     std_msgs::msg::Bool engineRunningMsg;
     engineRunningMsg.data = engineRunning;
@@ -469,6 +557,22 @@ private:
     augerOverloadMsg.data = simulateAugerOverload_ && effectiveAugerEngaged;
     augerOverloadPublisher_->publish(augerOverloadMsg);
 
+    std_msgs::msg::Bool augerInterlockOkMsg;
+    augerInterlockOkMsg.data = augerInterlockOk;
+    augerInterlockOkPublisher_->publish(augerInterlockOkMsg);
+
+    std_msgs::msg::Bool augerFaultLatchedMsg;
+    augerFaultLatchedMsg.data = augerFaultLatched_;
+    augerFaultLatchedPublisher_->publish(augerFaultLatchedMsg);
+
+    std_msgs::msg::Bool augerResetRequiredMsg;
+    augerResetRequiredMsg.data = augerResetRequired;
+    augerResetRequiredPublisher_->publish(augerResetRequiredMsg);
+
+    std_msgs::msg::String augerStatusTextMsg;
+    augerStatusTextMsg.data = augerStatusText;
+    augerStatusTextPublisher_->publish(augerStatusTextMsg);
+
     std_msgs::msg::Float32 chutePositionMsg;
     chutePositionMsg.data = chutePosition_;
     chutePositionPublisher_->publish(chutePositionMsg);
@@ -476,6 +580,57 @@ private:
     std_msgs::msg::Float32 deflectorPositionMsg;
     deflectorPositionMsg.data = deflectorPosition_;
     deflectorPositionPublisher_->publish(deflectorPositionMsg);
+  }
+
+  std::string buildAugerStatusText(
+      bool augerModeActive,
+      bool engineRunning,
+      bool throttleReadyForAuger,
+      bool batteryReadyForAuger,
+      bool augerResetRequired,
+      bool effectiveAugerEngaged) const
+  {
+    if (emergencyStopActive_)
+    {
+      return "emergency_stop_active";
+    }
+
+    if (augerResetRequired)
+    {
+      return "fault_latched_reset_required";
+    }
+
+    if (!augerModeActive)
+    {
+      return "switch_to_snow_clearing_auger_profile";
+    }
+
+    if (!engineRunning)
+    {
+      return "engine_off";
+    }
+
+    if (!throttleReadyForAuger)
+    {
+      return "increase_engine_throttle_before_engage";
+    }
+
+    if (!batteryReadyForAuger)
+    {
+      return "battery_voltage_low";
+    }
+
+    if (effectiveAugerEngaged)
+    {
+      return "auger_engaged";
+    }
+
+    if (augerEngagedCommand_)
+    {
+      return "waiting_for_interlock";
+    }
+
+    return "ready_to_engage";
   }
 
   std::string normalizeProfile(const std::string &value) const
@@ -495,6 +650,8 @@ private:
   bool augerEngagedCommand_ = false;
   bool emergencyStopActive_ = false;
   bool simulateAugerOverload_ = false;
+  bool resetAugerFaultRequested_ = false;
+  bool augerFaultLatched_ = false;
 
   float engineThrottleCommand_ = 0.0F;
   float chutePositionCommand_ = 0.0F;
@@ -552,6 +709,9 @@ private:
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr
       augerOverloadSubscription_;
 
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr
+      resetAugerFaultSubscription_;
+
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr
       engineRunningPublisher_;
 
@@ -578,6 +738,18 @@ private:
 
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr
       augerOverloadPublisher_;
+
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr
+      augerInterlockOkPublisher_;
+
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr
+      augerFaultLatchedPublisher_;
+
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr
+      augerResetRequiredPublisher_;
+
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr
+      augerStatusTextPublisher_;
 
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr
       chutePositionPublisher_;

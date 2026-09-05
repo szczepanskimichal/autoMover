@@ -126,6 +126,7 @@ The teleop is incremental rather than hold-based:
 - `g` and `h` rotate the chute left and right
 - `y` and `u` adjust the deflector down and up
 - `v` simulates auger overload for testing
+- `j` requests auger fault reset after the auger has been disengaged and the throttle has been reduced
 - `e` toggles emergency stop
 - `x` or `space` stops the mower
 - `q` quits teleop
@@ -138,6 +139,10 @@ The teleop still publishes the generic tool topics for compatibility, but the
 current winter-oriented control path now also publishes hybrid-specific
 commands for engine state, auger engagement, chute position, deflector position,
 and overload simulation.
+
+The auger path now also exposes explicit interlock state, a latched fault, and a
+reset-required signal so the mechanical snowblower workflow can be debugged in
+software before hardware wiring exists.
 
 Experimental joystick path:
 
@@ -186,6 +191,7 @@ The most important runtime interfaces are:
 - `/engine_enabled`, `/engine_throttle`, and `/auger_engaged` for the hybrid winter attachment model
 - `/hybrid/engine_rpm`, `/hybrid/battery_voltage`, `/hybrid/battery_soc`, and `/hybrid/dc_bus_current` for simulated power-train telemetry
 - `/hybrid/auger_rpm`, `/hybrid/auger_overload`, `/hybrid/chute_position`, and `/hybrid/deflector_position` for mechanical auger state
+- `/hybrid/auger_interlock_ok`, `/hybrid/auger_fault_latched`, `/hybrid/auger_reset_required`, and `/hybrid/auger_status_text` for auger safety and recovery state
 
 The main frame chain is:
 

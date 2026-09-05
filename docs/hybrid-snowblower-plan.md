@@ -252,6 +252,10 @@ The repository now already exposes a simulated hybrid state model with:
 - `/hybrid/traction_power_limit`
 - `/hybrid/auger_rpm`
 - `/hybrid/auger_overload`
+- `/hybrid/auger_interlock_ok`
+- `/hybrid/auger_fault_latched`
+- `/hybrid/auger_reset_required`
+- `/hybrid/auger_status_text`
 
 The next software job is no longer inventing these interfaces.
 The next software job is wiring them to real IO:
@@ -263,6 +267,7 @@ The next software job is wiring them to real IO:
 - chute rotation actuator
 - deflector actuator
 - real overload detection instead of manual simulation
+- physical jam reset and clutch-disengage semantics
 
 The software goal stays the same: represent the real machine honestly, not as a
 single normalized tool slider.

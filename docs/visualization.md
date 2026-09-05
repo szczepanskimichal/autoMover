@@ -161,6 +161,15 @@ Key mapping in the current teleop:
 - `s` increase reverse speed or reduce forward speed
 - `a` increase left turn rate
 - `d` increase right turn rate
+- `1`, `2`, `3` switch between `manual_drive`, `mowing`, and `snow_clearing`
+- `i` toggle engine state
+- `t` toggle auger clutch request
+- `r` and `f` raise or lower engine throttle demand
+- `g` and `h` rotate the chute
+- `y` and `u` move the deflector
+- `v` simulate auger overload
+- `j` request auger fault reset
+- `e` toggle emergency stop
 - `x` or `space` stop
 - `q` quit
 
@@ -168,6 +177,36 @@ The teleop keeps publishing the current target command until you change it or
 stop it. Keep the keyboard focus in the terminal running the teleop. Foxglove
 uses many of the same keys for camera control, so driving from the terminal is
 more reliable than driving from inside the 3D panel.
+
+### 6a. Hybrid dashboard in Foxglove
+
+For the current hybrid snowblower model, add these panels next to the `3D`
+view:
+
+- `Raw Messages` pinned to `/hybrid/auger_status_text`
+- `Raw Messages` pinned to `/hybrid/auger_fault_latched`
+- `Raw Messages` pinned to `/hybrid/auger_interlock_ok`
+- `Plot` with `/hybrid/engine_rpm`
+- `Plot` with `/hybrid/auger_rpm`
+- `Plot` with `/hybrid/battery_voltage`
+- `Plot` with `/hybrid/dc_bus_current`
+- `Plot` with `/hybrid/traction_power_limit`
+
+This gives you one screen with:
+
+- scene motion in `3D`
+- whether the auger is allowed to engage
+- whether a jam has latched a fault
+- how hard the simulated hybrid power train is working
+
+Recommended quick interpretation:
+
+- `auger_status_text=ready_to_engage` means snow mode, engine state, throttle,
+  and battery all allow auger engagement
+- `fault_latched_reset_required` means you must drop throttle, disengage the
+  auger request, and press `j`
+- a lower `/hybrid/traction_power_limit` indicates the controller is reserving
+  margin because of auger load, low-power conditions, or a latched fault
 
 ## What you should see
 
@@ -178,6 +217,10 @@ Once connected in Foxglove, you should be able to inspect:
 - `/tf_static`
 - `/joint_states`
 - `/robot_description`
+- `/hybrid/engine_rpm`
+- `/hybrid/battery_voltage`
+- `/hybrid/auger_status_text`
+- `/hybrid/auger_fault_latched`
 
 Use these views first:
 
