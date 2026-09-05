@@ -7,6 +7,8 @@ It is different from `README.md`:
 - `README.md` explains the project to other people
 - this file explains how to read the code and where to make changes safely
 
+If you prefer a visual map first, open `docs/diagrams.md` next to this file.
+
 ## The Right Mental Model
 
 Do not read this repository as a flat list of files.
@@ -58,6 +60,7 @@ The main files are:
 
 1. `ros2_ws/src/automower_control/src/automower_wasd_teleop.cpp`
 2. `ros2_ws/src/automower_control/src/automower_drive_node.cpp`
+3. `ros2_ws/src/automower_control/src/automower_tool_controller.cpp`
 
 This layer adds:
 
@@ -131,6 +134,7 @@ This is the core runtime file.
 This file controls:
 
 - how `/cmd_vel` is interpreted
+- how `/work_mode` and `/emergency_stop` gate drive motion
 - how wheel speeds are stored
 - how often state is updated
 - how wheel positions are integrated
@@ -140,6 +144,22 @@ This file controls:
 - how the simple marker model is shown in Foxglove
 
 If you want to affect physical behavior over time, this is the most important file in the repo.
+
+### `ros2_ws/src/automower_control/src/automower_tool_controller.cpp`
+
+This file is the current placeholder for the working tool.
+
+It does not drive real hardware yet, but it already defines the contract for:
+
+- `blade` profile
+- `auger` profile
+- tool enable state
+- tool power
+- tool angle
+- interaction with work mode and emergency stop
+
+This is where the mower-to-snowblower transition starts to become a real
+software boundary instead of just a future idea.
 
 ### `ros2_ws/src/automower_description/urdf/automower.urdf.xacro`
 

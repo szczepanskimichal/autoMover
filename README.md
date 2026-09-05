@@ -51,6 +51,7 @@ The `automower_drive_node` in `ros2_ws/src/automower_control` is responsible for
 - publishing `/odom`
 - broadcasting `odom -> base_footprint`
 - publishing a marker-based mower body to `/visualization_marker_array`
+- respecting `/work_mode` and `/emergency_stop` before applying drive commands
 
 The node keeps its motion state on a fixed update loop and falls back to zero wheel speed when teleop input times out. That keeps the `odom` frame alive even when no fresh command is being sent, which matters for Foxglove because the 3D panel needs a stable fixed frame.
 
@@ -62,7 +63,25 @@ The `automower_description` package provides:
 - the launch file that starts `robot_state_publisher` and the drive node
 - the RViz config used by the experimental XQuartz path
 
-### 4. Visualization workflow
+### 4. Tool and mode scaffold
+
+The repository now includes a generic tool-control scaffold so the same drive
+platform can later host either a mower blade or a snowblower auger.
+
+The current control-side topics are:
+
+- `/work_mode` with values such as `manual_drive`, `mowing`, `snow_clearing`, or `emergency_stop`
+- `/emergency_stop` as a hard stop signal
+- `/tool_profile` with `blade` or `auger`
+- `/tool_enabled` to arm or disarm the tool
+- `/tool_power` as a normalized `0.0..1.0` setpoint
+- `/tool_angle` as a normalized `-1.0..1.0` setpoint for blade angle or future auger-related steering
+
+The `automower_tool_controller` node is currently a stub that validates these
+signals and reports the effective tool state. That keeps the repo ready for the
+snowblower path before the real hardware driver exists.
+
+### 5. Visualization workflow
 
 On macOS, the main workflow is:
 
@@ -102,6 +121,16 @@ The teleop is incremental rather than hold-based:
 - `x` or `space` stops the mower
 - `q` quits teleop
 
+Experimental joystick path:
+
+```bash
+./scripts/run_joystick_teleop.sh
+```
+
+This starts `joy_node` and maps `/joy` to `/cmd_vel`. On macOS with Docker
+Desktop, direct USB or Bluetooth gamepad access inside the container may still
+need a host-side bridge, so treat this as the software integration path first.
+
 ### Manual step-by-step workflow
 
 ```bash
@@ -110,6 +139,20 @@ The teleop is incremental rather than hold-based:
 ./scripts/run_ros_stack.sh
 ./scripts/run_foxglove_bridge.sh
 ./scripts/run_wasd_teleop.sh
+```
+
+### Test work modes and tool state
+
+```bash
+./scripts/set_work_mode.sh snow_clearing
+./scripts/set_tool_state.sh auger true 0.7 0.0
+```
+
+You can switch back to mower-oriented behavior later with:
+
+```bash
+./scripts/set_work_mode.sh mowing
+./scripts/set_tool_state.sh blade true 0.5 -0.3
 ```
 
 ## Key Topics And Frames
@@ -135,9 +178,11 @@ odom -> base_footprint -> base_link -> wheel links
 - `include/` and `src/` contain the simplest version of the drive model and are a good starting point if you want to learn the core logic first.
 - `ros2_ws/src/automower_control/src/automower_drive_node.cpp` is the best file to read when you want to understand the full runtime data flow.
 - `ros2_ws/src/automower_control/src/automower_wasd_teleop.cpp` is the best file to read when you want to understand how keyboard input becomes a stable `/cmd_vel` stream.
+- `ros2_ws/src/automower_control/src/automower_tool_controller.cpp` is the best place to evolve the repo from a mower-specific prototype into a platform with swappable tools.
 
 ## Additional Documentation
 
 - [docs/project-structure.md](docs/project-structure.md)
+- [docs/diagrams.md](docs/diagrams.md)
 - [docs/learning-guide.md](docs/learning-guide.md)
 - [docs/visualization.md](docs/visualization.md)

@@ -10,6 +10,8 @@
 #include "geometry_msgs/msg/transform_stamped.hpp"
 
 #include "sensor_msgs/msg/joint_state.hpp"
+#include "std_msgs/msg/bool.hpp"
+#include "std_msgs/msg/string.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 
@@ -42,6 +44,24 @@ public:
                 10,
                 std::bind(
                     &AutoMowerDriveNode::cmdVelCallback,
+                    this,
+                    std::placeholders::_1));
+
+        workModeSubscription_ =
+            this->create_subscription<std_msgs::msg::String>(
+                "/work_mode",
+                10,
+                std::bind(
+                    &AutoMowerDriveNode::workModeCallback,
+                    this,
+                    std::placeholders::_1));
+
+        emergencyStopSubscription_ =
+            this->create_subscription<std_msgs::msg::Bool>(
+                "/emergency_stop",
+                10,
+                std::bind(
+                    &AutoMowerDriveNode::emergencyStopCallback,
                     this,
                     std::placeholders::_1));
 
@@ -83,7 +103,8 @@ public:
 
         RCLCPP_INFO(
             this->get_logger(),
-            "autoMower drive node started");
+            "autoMower drive node started in mode '%s'",
+            workMode_.c_str());
     }
 
 private:
@@ -114,6 +135,12 @@ private:
     void cmdVelCallback(
         const geometry_msgs::msg::Twist::SharedPtr msg)
     {
+        if (emergencyStopActive_ || !driveAllowedInCurrentMode())
+        {
+            currentSpeeds_ = WheelSpeeds{0.0, 0.0, 0.0, 0.0};
+            return;
+        }
+
         hasLastCommandTime_ = true;
         lastCommandTime_ = this->now();
 
@@ -123,6 +150,46 @@ private:
             driveController_.calculate(
                 msg->linear.x,
                 msg->angular.z);
+    }
+
+    void workModeCallback(
+        const std_msgs::msg::String::SharedPtr msg)
+    {
+        if (msg->data == workMode_)
+        {
+            return;
+        }
+
+        workMode_ = msg->data;
+
+        RCLCPP_INFO(
+            this->get_logger(),
+            "drive mode changed to '%s'",
+            workMode_.c_str());
+    }
+
+    void emergencyStopCallback(
+        const std_msgs::msg::Bool::SharedPtr msg)
+    {
+        emergencyStopActive_ = msg->data;
+
+        if (emergencyStopActive_)
+        {
+            currentSpeeds_ = WheelSpeeds{0.0, 0.0, 0.0, 0.0};
+            hasLastCommandTime_ = false;
+            RCLCPP_WARN(this->get_logger(), "emergency stop active");
+        }
+        else
+        {
+            RCLCPP_INFO(this->get_logger(), "emergency stop released");
+        }
+    }
+
+    bool driveAllowedInCurrentMode() const
+    {
+        return workMode_ == "manual_drive" ||
+               workMode_ == "mowing" ||
+               workMode_ == "snow_clearing";
     }
 
     void publishState()
@@ -136,6 +203,13 @@ private:
         }
 
         WheelSpeeds speeds = currentSpeeds_;
+
+        if (emergencyStopActive_ || !driveAllowedInCurrentMode())
+        {
+            speeds = WheelSpeeds{0.0, 0.0, 0.0, 0.0};
+            currentSpeeds_ = speeds;
+            hasLastCommandTime_ = false;
+        }
 
         // If teleop stops publishing, decay immediately to a stationary target
         // so odometry and TF remain valid without runaway motion.
@@ -466,12 +540,22 @@ private:
 
     bool hasLastTime_;
 
+    bool emergencyStopActive_ = false;
+
+    std::string workMode_ = "manual_drive";
+
     rclcpp::Time lastCommandTime_;
 
     rclcpp::Time lastTime_;
 
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr
         cmdVelSubscription_;
+
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr
+        workModeSubscription_;
+
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr
+        emergencyStopSubscription_;
 
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr
         jointStatePublisher_;

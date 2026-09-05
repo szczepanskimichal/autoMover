@@ -12,6 +12,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
@@ -51,6 +52,16 @@ add_executable(
   src/automower_wasd_teleop.cpp
 )
 
+add_executable(
+  automower_joystick_teleop
+  src/automower_joystick_teleop.cpp
+)
+
+add_executable(
+  automower_tool_controller
+  src/automower_tool_controller.cpp
+)
+
 target_include_directories(
   automower_drive_node
   PRIVATE
@@ -73,6 +84,7 @@ ament_target_dependencies(
   rclcpp
   geometry_msgs
   sensor_msgs
+  std_msgs
   nav_msgs
   visualization_msgs
   tf2
@@ -85,10 +97,25 @@ ament_target_dependencies(
   geometry_msgs
 )
 
+ament_target_dependencies(
+  automower_joystick_teleop
+  rclcpp
+  geometry_msgs
+  sensor_msgs
+)
+
+ament_target_dependencies(
+  automower_tool_controller
+  rclcpp
+  std_msgs
+)
+
 install(
   TARGETS
     automower_drive_node
     automower_wasd_teleop
+    automower_joystick_teleop
+    automower_tool_controller
   DESTINATION lib/${PROJECT_NAME}
 )
 ament_package()

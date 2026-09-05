@@ -59,6 +59,11 @@ def generate_launch_description():
         ),
 
         Node(
+            package='automower_control',
+            executable='automower_tool_controller'
+        ),
+
+        Node(
             package='rviz2',
             executable='rviz2',
             arguments=['-d', rviz_config_file],
