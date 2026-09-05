@@ -24,6 +24,7 @@ class AutoMowerDriveNode : public rclcpp::Node
 public:
     AutoMowerDriveNode()
         : Node("automower_drive_node"),
+                    currentSpeeds_{0.0, 0.0, 0.0, 0.0},
           frontLeftPosition_(0.0),
           frontRightPosition_(0.0),
           rearLeftPosition_(0.0),
@@ -70,16 +71,16 @@ public:
                     &AutoMowerDriveNode::publishVisualization,
                     this));
 
-        idleStateTimer_ =
+        stateUpdateTimer_ =
             this->create_wall_timer(
-                std::chrono::milliseconds(100),
+                std::chrono::milliseconds(50),
                 std::bind(
-                    &AutoMowerDriveNode::publishIdleState,
+                    &AutoMowerDriveNode::publishState,
                     this));
 
         publishVisualization();
         // Seed odometry and TF immediately so visualization has a fixed frame.
-        publishIdleState();
+        publishState();
 
         RCLCPP_INFO(
             this->get_logger(),
@@ -114,31 +115,32 @@ private:
     void cmdVelCallback(
         const geometry_msgs::msg::Twist::SharedPtr msg)
     {
-        const auto currentTime = this->now();
         hasLastCommandTime_ = true;
-        lastCommandTime_ = currentTime;
+        lastCommandTime_ = this->now();
+
+        currentSpeeds_ =
+            driveController_.calculate(
+                msg->linear.x,
+                msg->angular.z);
+    }
+
+    void publishState()
+    {
+        const auto currentTime = this->now();
 
         if (!hasLastTime_)
         {
             hasLastTime_ = true;
             lastTime_ = currentTime;
+        }
 
-            WheelSpeeds speeds =
-                driveController_.calculate(
-                    msg->linear.x,
-                    msg->angular.z);
+        WheelSpeeds speeds = currentSpeeds_;
 
-            simulationDriver_.apply(speeds);
-
-            publishJointStates(
-                speeds,
-                currentTime);
-
-            publishOdometry(
-                speeds,
-                currentTime);
-
-            return;
+        if (!hasLastCommandTime_ ||
+            (currentTime - lastCommandTime_).seconds() >= CMD_VEL_TIMEOUT)
+        {
+            speeds = WheelSpeeds{0.0, 0.0, 0.0, 0.0};
+            currentSpeeds_ = speeds;
         }
 
         const double dt =
@@ -146,65 +148,25 @@ private:
 
         lastTime_ = currentTime;
 
-        if (dt <= 0.0)
+        if (dt > 0.0)
         {
-            return;
-        }
+            updateWheelPositions(
+                speeds,
+                dt);
 
-        WheelSpeeds speeds =
-            driveController_.calculate(
-                msg->linear.x,
-                msg->angular.z);
+            updateOdometry(
+                speeds,
+                dt);
+        }
 
         simulationDriver_.apply(speeds);
 
-        updateWheelPositions(
-            speeds,
-            dt);
-
-        updateOdometry(
-            speeds,
-            dt);
-
         publishJointStates(
             speeds,
             currentTime);
 
         publishOdometry(
             speeds,
-            currentTime);
-    }
-
-    void publishIdleState()
-    {
-        const auto currentTime = this->now();
-
-        // Recent teleop commands already publish live state, so this timer only
-        // keeps the transforms and odometry alive while the mower is idle.
-        if (hasLastCommandTime_ &&
-            (currentTime - lastCommandTime_).seconds() < CMD_VEL_TIMEOUT)
-        {
-            return;
-        }
-
-        const WheelSpeeds stationarySpeeds{
-            0.0,
-            0.0,
-            0.0,
-            0.0};
-
-        if (!hasLastTime_)
-        {
-            hasLastTime_ = true;
-            lastTime_ = currentTime;
-        }
-
-        publishJointStates(
-            stationarySpeeds,
-            currentTime);
-
-        publishOdometry(
-            stationarySpeeds,
             currentTime);
     }
 
@@ -487,6 +449,8 @@ private:
     DriveController driveController_;
     SimulationDriver simulationDriver_;
 
+    WheelSpeeds currentSpeeds_;
+
     double frontLeftPosition_;
     double frontRightPosition_;
     double rearLeftPosition_;
@@ -523,7 +487,7 @@ private:
         markerTimer_;
 
     rclcpp::TimerBase::SharedPtr
-        idleStateTimer_;
+        stateUpdateTimer_;
 };
 
 int main(int argc, char **argv)
