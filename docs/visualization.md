@@ -133,6 +133,15 @@ In the `Topics` section of the 3D panel, enable:
 This repository already publishes a simple mower body as markers, so enabling
 `/visualization_marker_array` is the fastest way to see the full prototype.
 
+On the `kosiarka` branch, those markers now include the mower deck, blade, and a
+simple lidar mast, so the quick marker view is no longer just the old box body.
+They also include a forward mower safety zone and a mowing trail in `odom`, so
+you can immediately see when the robot is armed for cutting and where it has
+already passed.
+
+For mobile testing, keep Foxglove as the view layer and use the phone UI from
+`http://HOST_IP:8080` as the control layer. Both can run at the same time.
+
 If you also want the robot from URDF, add a `URDF` custom layer and set:
 
 - `Source` = `Topic`
@@ -161,14 +170,14 @@ Key mapping in the current teleop:
 - `s` increase reverse speed or reduce forward speed
 - `a` increase left turn rate
 - `d` increase right turn rate
-- `1`, `2`, `3` switch between `manual_drive`, `mowing`, and `snow_clearing`
-- `i` toggle engine state
-- `t` toggle auger clutch request
-- `r` and `f` raise or lower engine throttle demand
-- `g` and `h` rotate the chute
-- `y` and `u` move the deflector
-- `v` simulate auger overload
-- `j` request auger fault reset
+- `1` switch to `manual_drive`
+- `2` switch to `mowing`
+- `b` select the `blade` profile
+- `i` toggle blade drive state
+- `t` toggle blade request
+- `r` and `f` raise or lower blade power demand
+- `g` and `h` adjust the cut-height input
+- `o` simulate a lidar obstacle
 - `e` toggle emergency stop
 - `x` or `space` stop
 - `q` quit
@@ -178,35 +187,23 @@ stop it. Keep the keyboard focus in the terminal running the teleop. Foxglove
 uses many of the same keys for camera control, so driving from the terminal is
 more reliable than driving from inside the 3D panel.
 
-### 6a. Hybrid dashboard in Foxglove
+### 6a. Mower dashboard in Foxglove
 
-For the current hybrid snowblower model, add these panels next to the `3D`
-view:
+For the mower branch, add these panels next to the `3D` view:
 
-- `Raw Messages` pinned to `/hybrid/auger_status_text`
-- `Raw Messages` pinned to `/hybrid/auger_fault_latched`
-- `Raw Messages` pinned to `/hybrid/auger_interlock_ok`
-- `Plot` with `/hybrid/engine_rpm`
-- `Plot` with `/hybrid/auger_rpm`
-- `Plot` with `/hybrid/battery_voltage`
-- `Plot` with `/hybrid/dc_bus_current`
-- `Plot` with `/hybrid/traction_power_limit`
+- `Raw Messages` pinned to `/mower/status_text`
+- `Raw Messages` pinned to `/mower/lidar_obstacle`
+- `Raw Messages` pinned to `/mower/safety_stop`
+- `Plot` with `/mower/blade_rpm`
+- `Plot` with `/mower/cut_height`
 
-This gives you one screen with:
+This makes it easy to see:
 
-- scene motion in `3D`
-- whether the auger is allowed to engage
-- whether a jam has latched a fault
-- how hard the simulated hybrid power train is working
-
-Recommended quick interpretation:
-
-- `auger_status_text=ready_to_engage` means snow mode, engine state, throttle,
-  and battery all allow auger engagement
-- `fault_latched_reset_required` means you must drop throttle, disengage the
-  auger request, and press `j`
-- a lower `/hybrid/traction_power_limit` indicates the controller is reserving
-  margin because of auger load, low-power conditions, or a latched fault
+- whether the mower is in the correct `mowing + blade` mode
+- whether the blade request is active
+- whether a simulated lidar obstacle is stopping cutting
+- how the cut-height input is changing during tests
+- whether the operator-command timeout has safely disarmed the blade after teleop stops
 
 ## What you should see
 
@@ -217,10 +214,12 @@ Once connected in Foxglove, you should be able to inspect:
 - `/tf_static`
 - `/joint_states`
 - `/robot_description`
-- `/hybrid/engine_rpm`
-- `/hybrid/battery_voltage`
-- `/hybrid/auger_status_text`
-- `/hybrid/auger_fault_latched`
+- `/scan`
+- `/mower/blade_rpm`
+- `/mower/cut_height`
+- `/mower/status_text`
+- `/mower/lidar_obstacle`
+- `/mower/safety_stop`
 
 Use these views first:
 
@@ -239,6 +238,8 @@ The robot stack already publishes:
 - wheel rotation through `/joint_states`
 - body motion through `odom -> base_footprint`
 - odometry through `/odom`
+- a red/green deck safety zone through `/visualization_marker_array`
+- a simple cut trail through `/visualization_marker_array` when the blade is active
 
 ## Stable Debug Workflow
 

@@ -1,9 +1,10 @@
 #include <algorithm>
-#include <cmath>
+#include <array>
+#include <chrono>
 #include <string>
 
-#include "geometry_msgs/msg/twist.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/laser_scan.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/float32.hpp"
 #include "std_msgs/msg/string.hpp"
@@ -14,15 +15,6 @@ public:
   AutomowerToolController()
       : Node("automower_tool_controller")
   {
-    cmdVelSubscription_ =
-        this->create_subscription<geometry_msgs::msg::Twist>(
-            "/cmd_vel",
-            10,
-            std::bind(
-                &AutomowerToolController::cmdVelCallback,
-                this,
-                std::placeholders::_1));
-
     profileSubscription_ =
         this->create_subscription<std_msgs::msg::String>(
             "/tool_profile",
@@ -86,167 +78,80 @@ public:
                 this,
                 std::placeholders::_1));
 
-    engineThrottleSubscription_ =
-        this->create_subscription<std_msgs::msg::Float32>(
-            "/engine_throttle",
-            10,
-            std::bind(
-                &AutomowerToolController::engineThrottleCallback,
-                this,
-                std::placeholders::_1));
-
-    augerEngagedSubscription_ =
+    lidarObstacleSubscription_ =
         this->create_subscription<std_msgs::msg::Bool>(
-            "/auger_engaged",
+            "/simulate_lidar_obstacle",
             10,
             std::bind(
-                &AutomowerToolController::augerEngagedCallback,
+                &AutomowerToolController::lidarObstacleCallback,
                 this,
                 std::placeholders::_1));
 
-    chutePositionSubscription_ =
-        this->create_subscription<std_msgs::msg::Float32>(
-            "/chute_position",
-            10,
-            std::bind(
-                &AutomowerToolController::chutePositionCallback,
-                this,
-                std::placeholders::_1));
-
-    deflectorPositionSubscription_ =
-        this->create_subscription<std_msgs::msg::Float32>(
-            "/deflector_position",
-            10,
-            std::bind(
-                &AutomowerToolController::deflectorPositionCallback,
-                this,
-                std::placeholders::_1));
-
-    augerOverloadSubscription_ =
-        this->create_subscription<std_msgs::msg::Bool>(
-            "/simulate_auger_overload",
-            10,
-            std::bind(
-                &AutomowerToolController::augerOverloadCallback,
-                this,
-                std::placeholders::_1));
-
-    resetAugerFaultSubscription_ =
-        this->create_subscription<std_msgs::msg::Bool>(
-            "/reset_auger_fault",
-            10,
-            std::bind(
-                &AutomowerToolController::resetAugerFaultCallback,
-                this,
-                std::placeholders::_1));
-
-    engineRunningPublisher_ =
+    bladeEnabledPublisher_ =
         this->create_publisher<std_msgs::msg::Bool>(
-            "/hybrid/engine_running",
+            "/mower/blade_enabled",
             10);
 
-    engineRpmPublisher_ =
+    bladeRpmPublisher_ =
         this->create_publisher<std_msgs::msg::Float32>(
-            "/hybrid/engine_rpm",
+            "/mower/blade_rpm",
             10);
 
-    batterySocPublisher_ =
+    cutHeightPublisher_ =
         this->create_publisher<std_msgs::msg::Float32>(
-            "/hybrid/battery_soc",
+            "/mower/cut_height",
             10);
 
-    batteryVoltagePublisher_ =
-        this->create_publisher<std_msgs::msg::Float32>(
-            "/hybrid/battery_voltage",
-            10);
-
-    dcBusCurrentPublisher_ =
-        this->create_publisher<std_msgs::msg::Float32>(
-            "/hybrid/dc_bus_current",
-            10);
-
-    tractionPowerLimitPublisher_ =
-        this->create_publisher<std_msgs::msg::Float32>(
-            "/hybrid/traction_power_limit",
-            10);
-
-    augerEngagedPublisher_ =
+    lidarObstaclePublisher_ =
         this->create_publisher<std_msgs::msg::Bool>(
-            "/hybrid/auger_engaged",
+            "/mower/lidar_obstacle",
             10);
 
-    augerRpmPublisher_ =
-        this->create_publisher<std_msgs::msg::Float32>(
-            "/hybrid/auger_rpm",
-            10);
-
-    augerOverloadPublisher_ =
+    mowerSafetyStopPublisher_ =
         this->create_publisher<std_msgs::msg::Bool>(
-            "/hybrid/auger_overload",
+            "/mower/safety_stop",
             10);
 
-    augerInterlockOkPublisher_ =
-        this->create_publisher<std_msgs::msg::Bool>(
-            "/hybrid/auger_interlock_ok",
-            10);
-
-    augerFaultLatchedPublisher_ =
-        this->create_publisher<std_msgs::msg::Bool>(
-            "/hybrid/auger_fault_latched",
-            10);
-
-    augerResetRequiredPublisher_ =
-        this->create_publisher<std_msgs::msg::Bool>(
-            "/hybrid/auger_reset_required",
-            10);
-
-    augerStatusTextPublisher_ =
+    mowerStatusTextPublisher_ =
         this->create_publisher<std_msgs::msg::String>(
-            "/hybrid/auger_status_text",
+            "/mower/status_text",
             10);
 
-    chutePositionPublisher_ =
-        this->create_publisher<std_msgs::msg::Float32>(
-            "/hybrid/chute_position",
-            10);
-
-    deflectorPositionPublisher_ =
-        this->create_publisher<std_msgs::msg::Float32>(
-            "/hybrid/deflector_position",
+    lidarScanPublisher_ =
+        this->create_publisher<sensor_msgs::msg::LaserScan>(
+            "/scan",
             10);
 
     statusTimer_ =
         this->create_wall_timer(
             std::chrono::milliseconds(200),
             std::bind(
-                &AutomowerToolController::updateHybridState,
+                &AutomowerToolController::updateMowerState,
                 this));
 
     RCLCPP_INFO(
         this->get_logger(),
-        "tool controller ready with profile '%s'",
+        "tool controller ready in mode '%s' with profile '%s'",
+        workMode_.c_str(),
         toolProfile_.c_str());
   }
 
 private:
-  static constexpr float MAX_TELEOP_LINEAR_SPEED = 0.35F;
-  static constexpr float MAX_TELEOP_ANGULAR_SPEED = 0.5F;
-  static constexpr float ENGINE_IDLE_RPM = 1800.0F;
-  static constexpr float ENGINE_MAX_RPM = 3600.0F;
-  static constexpr float AUGER_MAX_RPM = 1200.0F;
-  static constexpr float BATTERY_SOC_FLOOR = 0.20F;
-  static constexpr float MIN_AUGER_ENGAGE_THROTTLE = 0.25F;
-  static constexpr float MAX_FAULT_RESET_THROTTLE = 0.10F;
-  static constexpr float MIN_AUGER_VOLTAGE = 45.0F;
-
-  void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
-  {
-    lastLinearCommand_ = static_cast<float>(msg->linear.x);
-    lastAngularCommand_ = static_cast<float>(msg->angular.z);
-  }
+  static constexpr float BLADE_MAX_RPM = 3200.0F;
+  static constexpr float DEFAULT_BLADE_IDLE_POWER = 0.55F;
+  static constexpr float CUT_HEIGHT_MIN = 0.06F;
+  static constexpr float CUT_HEIGHT_MAX = 0.12F;
+  static constexpr double OPERATOR_COMMAND_TIMEOUT = 0.4;
+  static constexpr std::size_t LIDAR_SAMPLE_COUNT = 181;
+  static constexpr float LIDAR_MIN_RANGE = 0.12F;
+  static constexpr float LIDAR_MAX_RANGE = 6.0F;
+  static constexpr float LIDAR_CLEAR_RANGE = 4.5F;
+  static constexpr float LIDAR_OBSTACLE_RANGE = 0.65F;
 
   void profileCallback(const std_msgs::msg::String::SharedPtr msg)
   {
+    markOperatorCommand();
+
     const std::string nextProfile = normalizeProfile(msg->data);
 
     if (nextProfile == toolProfile_)
@@ -264,414 +169,282 @@ private:
 
   void enabledCallback(const std_msgs::msg::Bool::SharedPtr msg)
   {
-    augerEngagedCommand_ = msg->data;
+    markOperatorCommand();
+    toolEnabledCommand_ = msg->data;
   }
 
   void powerCallback(const std_msgs::msg::Float32::SharedPtr msg)
   {
-    engineThrottleCommand_ = std::clamp(msg->data, 0.0F, 1.0F);
+    markOperatorCommand();
+    toolPowerCommand_ = std::clamp(msg->data, 0.0F, 1.0F);
   }
 
   void angleCallback(const std_msgs::msg::Float32::SharedPtr msg)
   {
-    chutePositionCommand_ = std::clamp(msg->data, -1.0F, 1.0F);
+    markOperatorCommand();
+    toolAngleCommand_ = std::clamp(msg->data, -1.0F, 1.0F);
   }
 
   void workModeCallback(const std_msgs::msg::String::SharedPtr msg)
   {
+    markOperatorCommand();
     workMode_ = msg->data;
   }
 
   void emergencyStopCallback(const std_msgs::msg::Bool::SharedPtr msg)
   {
+    markOperatorCommand();
     emergencyStopActive_ = msg->data;
 
     if (emergencyStopActive_)
     {
       engineEnabledCommand_ = false;
-      augerEngagedCommand_ = false;
-      engineThrottleCommand_ = 0.0F;
+      toolEnabledCommand_ = false;
     }
   }
 
   void engineEnabledCallback(const std_msgs::msg::Bool::SharedPtr msg)
   {
+    markOperatorCommand();
     engineEnabledCommand_ = msg->data;
   }
 
-  void engineThrottleCallback(const std_msgs::msg::Float32::SharedPtr msg)
+  void markOperatorCommand()
   {
-    engineThrottleCommand_ = std::clamp(msg->data, 0.0F, 1.0F);
+    hasLastOperatorCommandTime_ = true;
+    lastOperatorCommandTime_ = this->now();
   }
 
-  void augerEngagedCallback(const std_msgs::msg::Bool::SharedPtr msg)
+  void lidarObstacleCallback(const std_msgs::msg::Bool::SharedPtr msg)
   {
-    augerEngagedCommand_ = msg->data;
+    simulateLidarObstacle_ = msg->data;
   }
 
-  void chutePositionCallback(const std_msgs::msg::Float32::SharedPtr msg)
-  {
-    chutePositionCommand_ = std::clamp(msg->data, -1.0F, 1.0F);
-  }
-
-  void deflectorPositionCallback(const std_msgs::msg::Float32::SharedPtr msg)
-  {
-    deflectorPositionCommand_ = std::clamp(msg->data, -1.0F, 1.0F);
-  }
-
-  void augerOverloadCallback(const std_msgs::msg::Bool::SharedPtr msg)
-  {
-    simulateAugerOverload_ = msg->data;
-  }
-
-  void resetAugerFaultCallback(const std_msgs::msg::Bool::SharedPtr msg)
-  {
-    resetAugerFaultRequested_ = msg->data;
-  }
-
-  float clampUnit(float value) const
-  {
-    return std::clamp(value, 0.0F, 1.0F);
-  }
-
-  float moveTowards(float current, float target, float alpha) const
-  {
-    return current + (target - current) * alpha;
-  }
-
-  void updateHybridState()
+  void updateMowerState()
   {
     const auto now = this->now();
-    float dtSeconds = 0.2F;
+    const bool operatorCommandFresh =
+        hasLastOperatorCommandTime_ &&
+        (now - lastOperatorCommandTime_).seconds() < OPERATOR_COMMAND_TIMEOUT;
 
-    if (hasLastUpdateTime_)
-    {
-      dtSeconds = static_cast<float>((now - lastUpdateTime_).seconds());
-    }
-    else
-    {
-      hasLastUpdateTime_ = true;
-    }
-
-    lastUpdateTime_ = now;
-
-    const bool augerModeActive =
+    const bool bladeModeActive =
         !emergencyStopActive_ &&
-        workMode_ == "snow_clearing" &&
-        toolProfile_ == "auger";
+        workMode_ == "mowing" &&
+        toolProfile_ == "blade";
 
-    const bool engineRunning =
+    const bool bladeDriveActive =
+        operatorCommandFresh &&
         engineEnabledCommand_ &&
         !emergencyStopActive_;
 
-    const bool throttleReadyForAuger =
-        engineThrottleCommand_ >= MIN_AUGER_ENGAGE_THROTTLE;
+    const bool effectiveBladeEnabled =
+        bladeModeActive &&
+        bladeDriveActive &&
+        toolEnabledCommand_ &&
+        !simulateLidarObstacle_;
 
-    const bool batteryReadyForAuger =
-        batteryVoltage_ >= MIN_AUGER_VOLTAGE;
+    const float bladePowerDemand =
+        std::max(toolPowerCommand_, DEFAULT_BLADE_IDLE_POWER);
 
-    const bool resetConditionsMet =
-        !simulateAugerOverload_ &&
-        !augerEngagedCommand_ &&
-        engineThrottleCommand_ <= MAX_FAULT_RESET_THROTTLE &&
-        !emergencyStopActive_;
-
-    if (resetAugerFaultRequested_ && resetConditionsMet)
-    {
-      augerFaultLatched_ = false;
-    }
-
-    const bool augerInterlockOk =
-        augerModeActive &&
-        engineRunning &&
-        throttleReadyForAuger &&
-        batteryReadyForAuger &&
-        !augerFaultLatched_;
-
-    const bool effectiveAugerEngaged =
-        augerInterlockOk &&
-        augerEngagedCommand_;
-
-    const float tractionDemand = clampUnit(
-        std::fabs(lastLinearCommand_) / MAX_TELEOP_LINEAR_SPEED +
-        0.6F *
-            (std::fabs(lastAngularCommand_) / MAX_TELEOP_ANGULAR_SPEED));
-
-    const float targetEngineRpm = engineRunning
-                                      ? ENGINE_IDLE_RPM +
-                                            engineThrottleCommand_ *
-                                                (ENGINE_MAX_RPM - ENGINE_IDLE_RPM)
-                                      : 0.0F;
-
-    const float augerLoad = effectiveAugerEngaged
-                                ? (0.35F + engineThrottleCommand_ * 0.65F)
-                                : 0.0F;
-
-    float tractionPowerLimit = engineRunning ? 1.0F : 0.45F;
-
-    if (effectiveAugerEngaged)
-    {
-      tractionPowerLimit -= 0.25F + augerLoad * 0.25F;
-    }
-
-    tractionPowerLimit -= tractionDemand * 0.15F;
-
-    if (simulateAugerOverload_ && effectiveAugerEngaged)
-    {
-      tractionPowerLimit -= 0.25F;
-      augerFaultLatched_ = true;
-      augerEngagedCommand_ = false;
-    }
-
-    if (augerFaultLatched_)
-    {
-      tractionPowerLimit -= 0.10F;
-    }
-
-    tractionPowerLimit = std::clamp(tractionPowerLimit, 0.2F, 1.0F);
-
-    const float targetAugerRpm =
-        effectiveAugerEngaged
-            ? ((simulateAugerOverload_ ? 0.25F : 0.7F) *
-               AUGER_MAX_RPM *
-               std::max(engineThrottleCommand_, 0.3F))
+    const float bladeRpm =
+        effectiveBladeEnabled
+            ? bladePowerDemand * BLADE_MAX_RPM
             : 0.0F;
 
-    const float baseBusCurrent =
-        8.0F +
-        tractionDemand * 35.0F +
-        (effectiveAugerEngaged ? 18.0F + augerLoad * 25.0F : 0.0F) +
-        (simulateAugerOverload_ && effectiveAugerEngaged ? 12.0F : 0.0F);
+    const float cutHeight =
+        std::clamp(
+            CUT_HEIGHT_MIN +
+                ((toolAngleCommand_ + 1.0F) * 0.5F) *
+                    (CUT_HEIGHT_MAX - CUT_HEIGHT_MIN),
+            CUT_HEIGHT_MIN,
+            CUT_HEIGHT_MAX);
 
-    const float chargeRatePerSecond = engineRunning
-                                          ? (engineThrottleCommand_ * 0.00035F -
-                                             tractionDemand * 0.00015F -
-                                             augerLoad * 0.00020F)
-                                          : (-0.00004F -
-                                             tractionDemand * 0.00012F -
-                                             augerLoad * 0.00010F);
+    const bool mowerSafetyStop =
+        emergencyStopActive_ || simulateLidarObstacle_;
 
-    batterySoc_ = std::clamp(
-        batterySoc_ + chargeRatePerSecond * dtSeconds,
-        BATTERY_SOC_FLOOR,
-        1.0F);
+    const std::string mowerStatusText =
+        buildMowerStatusText(
+            operatorCommandFresh,
+            bladeModeActive,
+            bladeDriveActive,
+            effectiveBladeEnabled,
+            mowerSafetyStop,
+            toolEnabledCommand_);
 
-    engineRpm_ = moveTowards(engineRpm_, targetEngineRpm, 0.35F);
-    augerRpm_ = moveTowards(augerRpm_, targetAugerRpm, 0.30F);
-    chutePosition_ = moveTowards(chutePosition_, chutePositionCommand_, 0.30F);
-    deflectorPosition_ = moveTowards(
-        deflectorPosition_,
-        deflectorPositionCommand_,
-        0.30F);
+    publishMowerTopics(
+        effectiveBladeEnabled,
+        bladeRpm,
+        cutHeight,
+        mowerSafetyStop,
+        mowerStatusText);
 
-    dcBusCurrent_ = baseBusCurrent;
-    batteryVoltage_ = std::clamp(
-        50.8F - (1.0F - batterySoc_) * 4.0F - dcBusCurrent_ * 0.035F,
-        43.0F,
-        50.8F);
-
-    const bool augerResetRequired = augerFaultLatched_;
-    const std::string augerStatusText =
-        buildAugerStatusText(
-            augerModeActive,
-            engineRunning,
-            throttleReadyForAuger,
-            batteryReadyForAuger,
-            augerResetRequired,
-            effectiveAugerEngaged);
-
-    publishHybridTopics(
-        engineRunning,
-        effectiveAugerEngaged,
-        tractionPowerLimit,
-        augerInterlockOk,
-        augerResetRequired,
-        augerStatusText);
-
-    resetAugerFaultRequested_ = false;
+    publishLidarScan(now);
 
     RCLCPP_INFO_THROTTLE(
         this->get_logger(),
         *this->get_clock(),
         3000,
-        "mode=%s profile=%s engine=%s rpm=%.0f throttle=%.2f auger=%s auger_rpm=%.0f overload=%s fault=%s interlock=%s battery=%.0f%% voltage=%.1fV traction_limit=%.2f chute=%.2f deflector=%.2f status=%s",
+        "mode=%s profile=%s engine=%s tool=%s power=%.2f cut_height=%.2f blade=%s blade_rpm=%.0f obstacle=%s safety_stop=%s status=%s",
         workMode_.c_str(),
         toolProfile_.c_str(),
-        engineRunning ? "on" : "off",
-        engineRpm_,
-        engineThrottleCommand_,
-        effectiveAugerEngaged ? "engaged" : "off",
-        augerRpm_,
-        simulateAugerOverload_ ? "true" : "false",
-        augerFaultLatched_ ? "true" : "false",
-        augerInterlockOk ? "true" : "false",
-        batterySoc_ * 100.0F,
-        batteryVoltage_,
-        tractionPowerLimit,
-        chutePosition_,
-        deflectorPosition_,
-        augerStatusText.c_str());
+        bladeDriveActive ? "on" : "off",
+        toolEnabledCommand_ ? "on" : "off",
+        toolPowerCommand_,
+        cutHeight,
+        effectiveBladeEnabled ? "on" : "off",
+        bladeRpm,
+        simulateLidarObstacle_ ? "true" : "false",
+        mowerSafetyStop ? "true" : "false",
+        mowerStatusText.c_str());
   }
 
-  void publishHybridTopics(
-      bool engineRunning,
-      bool effectiveAugerEngaged,
-      float tractionPowerLimit,
-      bool augerInterlockOk,
-      bool augerResetRequired,
-      const std::string &augerStatusText)
+  void publishMowerTopics(
+      bool effectiveBladeEnabled,
+      float bladeRpm,
+      float cutHeight,
+      bool mowerSafetyStop,
+      const std::string &mowerStatusText)
   {
-    std_msgs::msg::Bool engineRunningMsg;
-    engineRunningMsg.data = engineRunning;
-    engineRunningPublisher_->publish(engineRunningMsg);
+    std_msgs::msg::Bool bladeEnabledMsg;
+    bladeEnabledMsg.data = effectiveBladeEnabled;
+    bladeEnabledPublisher_->publish(bladeEnabledMsg);
 
-    std_msgs::msg::Float32 engineRpmMsg;
-    engineRpmMsg.data = engineRpm_;
-    engineRpmPublisher_->publish(engineRpmMsg);
+    std_msgs::msg::Float32 bladeRpmMsg;
+    bladeRpmMsg.data = bladeRpm;
+    bladeRpmPublisher_->publish(bladeRpmMsg);
 
-    std_msgs::msg::Float32 batterySocMsg;
-    batterySocMsg.data = batterySoc_;
-    batterySocPublisher_->publish(batterySocMsg);
+    std_msgs::msg::Float32 cutHeightMsg;
+    cutHeightMsg.data = cutHeight;
+    cutHeightPublisher_->publish(cutHeightMsg);
 
-    std_msgs::msg::Float32 batteryVoltageMsg;
-    batteryVoltageMsg.data = batteryVoltage_;
-    batteryVoltagePublisher_->publish(batteryVoltageMsg);
+    std_msgs::msg::Bool lidarObstacleMsg;
+    lidarObstacleMsg.data = simulateLidarObstacle_;
+    lidarObstaclePublisher_->publish(lidarObstacleMsg);
 
-    std_msgs::msg::Float32 dcBusCurrentMsg;
-    dcBusCurrentMsg.data = dcBusCurrent_;
-    dcBusCurrentPublisher_->publish(dcBusCurrentMsg);
+    std_msgs::msg::Bool mowerSafetyStopMsg;
+    mowerSafetyStopMsg.data = mowerSafetyStop;
+    mowerSafetyStopPublisher_->publish(mowerSafetyStopMsg);
 
-    std_msgs::msg::Float32 tractionPowerLimitMsg;
-    tractionPowerLimitMsg.data = tractionPowerLimit;
-    tractionPowerLimitPublisher_->publish(tractionPowerLimitMsg);
-
-    std_msgs::msg::Bool augerEngagedMsg;
-    augerEngagedMsg.data = effectiveAugerEngaged;
-    augerEngagedPublisher_->publish(augerEngagedMsg);
-
-    std_msgs::msg::Float32 augerRpmMsg;
-    augerRpmMsg.data = augerRpm_;
-    augerRpmPublisher_->publish(augerRpmMsg);
-
-    std_msgs::msg::Bool augerOverloadMsg;
-    augerOverloadMsg.data = simulateAugerOverload_ && effectiveAugerEngaged;
-    augerOverloadPublisher_->publish(augerOverloadMsg);
-
-    std_msgs::msg::Bool augerInterlockOkMsg;
-    augerInterlockOkMsg.data = augerInterlockOk;
-    augerInterlockOkPublisher_->publish(augerInterlockOkMsg);
-
-    std_msgs::msg::Bool augerFaultLatchedMsg;
-    augerFaultLatchedMsg.data = augerFaultLatched_;
-    augerFaultLatchedPublisher_->publish(augerFaultLatchedMsg);
-
-    std_msgs::msg::Bool augerResetRequiredMsg;
-    augerResetRequiredMsg.data = augerResetRequired;
-    augerResetRequiredPublisher_->publish(augerResetRequiredMsg);
-
-    std_msgs::msg::String augerStatusTextMsg;
-    augerStatusTextMsg.data = augerStatusText;
-    augerStatusTextPublisher_->publish(augerStatusTextMsg);
-
-    std_msgs::msg::Float32 chutePositionMsg;
-    chutePositionMsg.data = chutePosition_;
-    chutePositionPublisher_->publish(chutePositionMsg);
-
-    std_msgs::msg::Float32 deflectorPositionMsg;
-    deflectorPositionMsg.data = deflectorPosition_;
-    deflectorPositionPublisher_->publish(deflectorPositionMsg);
+    std_msgs::msg::String mowerStatusTextMsg;
+    mowerStatusTextMsg.data = mowerStatusText;
+    mowerStatusTextPublisher_->publish(mowerStatusTextMsg);
   }
 
-  std::string buildAugerStatusText(
-      bool augerModeActive,
-      bool engineRunning,
-      bool throttleReadyForAuger,
-      bool batteryReadyForAuger,
-      bool augerResetRequired,
-      bool effectiveAugerEngaged) const
+  void publishLidarScan(const rclcpp::Time &stamp)
+  {
+    sensor_msgs::msg::LaserScan scan;
+    const float angleMin = -1.5707963F;
+    const float angleMax = 1.5707963F;
+    const float angleIncrement =
+        (angleMax - angleMin) /
+        static_cast<float>(LIDAR_SAMPLE_COUNT - 1U);
+
+    scan.header.stamp = stamp;
+    scan.header.frame_id = "lidar_link";
+    scan.angle_min = angleMin;
+    scan.angle_max = angleMax;
+    scan.angle_increment = angleIncrement;
+    scan.time_increment = 0.0F;
+    scan.scan_time = 0.2F;
+    scan.range_min = LIDAR_MIN_RANGE;
+    scan.range_max = LIDAR_MAX_RANGE;
+    scan.ranges.assign(LIDAR_SAMPLE_COUNT, LIDAR_CLEAR_RANGE);
+    scan.intensities.assign(LIDAR_SAMPLE_COUNT, 20.0F);
+
+    if (simulateLidarObstacle_)
+    {
+      constexpr std::array<std::size_t, 9> obstacleIndices = {
+          86U, 87U, 88U, 89U, 90U, 91U, 92U, 93U, 94U};
+
+      for (const std::size_t index : obstacleIndices)
+      {
+        scan.ranges[index] = LIDAR_OBSTACLE_RANGE;
+        scan.intensities[index] = 180.0F;
+      }
+    }
+
+    lidarScanPublisher_->publish(scan);
+  }
+
+  std::string buildMowerStatusText(
+      bool operatorCommandFresh,
+      bool bladeModeActive,
+      bool bladeDriveActive,
+      bool effectiveBladeEnabled,
+      bool mowerSafetyStop,
+      bool toolRequestActive) const
   {
     if (emergencyStopActive_)
     {
       return "emergency_stop_active";
     }
 
-    if (augerResetRequired)
+    if (!operatorCommandFresh)
     {
-      return "fault_latched_reset_required";
+      return "operator_command_timeout";
     }
 
-    if (!augerModeActive)
+    if (!bladeModeActive)
     {
-      return "switch_to_snow_clearing_auger_profile";
+      return "switch_to_mowing_blade_profile";
     }
 
-    if (!engineRunning)
+    if (simulateLidarObstacle_)
     {
-      return "engine_off";
+      return "lidar_obstacle_stop";
     }
 
-    if (!throttleReadyForAuger)
+    if (!bladeDriveActive && toolRequestActive)
     {
-      return "increase_engine_throttle_before_engage";
+      return "start_blade_drive";
     }
 
-    if (!batteryReadyForAuger)
+    if (mowerSafetyStop)
     {
-      return "battery_voltage_low";
+      return "mower_safety_stop";
     }
 
-    if (effectiveAugerEngaged)
+    if (effectiveBladeEnabled)
     {
-      return "auger_engaged";
+      return "blade_spinning";
     }
 
-    if (augerEngagedCommand_)
+    if (toolRequestActive)
     {
-      return "waiting_for_interlock";
+      return "blade_requested_waiting";
     }
 
-    return "ready_to_engage";
+    if (!bladeDriveActive)
+    {
+      return "blade_drive_off";
+    }
+
+    return "ready_to_mow";
   }
 
   std::string normalizeProfile(const std::string &value) const
   {
-    if (value == "blade" || value == "auger")
+    if (value.empty())
     {
-      return value;
+      return "blade";
     }
 
-    return "auger";
+    return value;
   }
 
-  std::string toolProfile_ = "auger";
-  std::string workMode_ = "manual_drive";
+  std::string toolProfile_ = "blade";
+  std::string workMode_ = "mowing";
 
   bool engineEnabledCommand_ = false;
-  bool augerEngagedCommand_ = false;
+  bool toolEnabledCommand_ = false;
   bool emergencyStopActive_ = false;
-  bool simulateAugerOverload_ = false;
-  bool resetAugerFaultRequested_ = false;
-  bool augerFaultLatched_ = false;
+  bool simulateLidarObstacle_ = false;
+  bool hasLastOperatorCommandTime_ = false;
 
-  float engineThrottleCommand_ = 0.0F;
-  float chutePositionCommand_ = 0.0F;
-  float deflectorPositionCommand_ = 0.0F;
+  float toolPowerCommand_ = 0.0F;
+  float toolAngleCommand_ = 0.0F;
 
-  float lastLinearCommand_ = 0.0F;
-  float lastAngularCommand_ = 0.0F;
-
-  float engineRpm_ = 0.0F;
-  float augerRpm_ = 0.0F;
-  float batterySoc_ = 0.92F;
-  float batteryVoltage_ = 50.0F;
-  float dcBusCurrent_ = 0.0F;
-  float chutePosition_ = 0.0F;
-  float deflectorPosition_ = 0.0F;
-  bool hasLastUpdateTime_ = false;
-  rclcpp::Time lastUpdateTime_{0, 0, RCL_ROS_TIME};
-
-  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr
-      cmdVelSubscription_;
+  rclcpp::Time lastOperatorCommandTime_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr
       profileSubscription_;
@@ -694,77 +467,38 @@ private:
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr
       engineEnabledSubscription_;
 
-  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr
-      engineThrottleSubscription_;
-
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr
-      augerEngagedSubscription_;
-
-  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr
-      chutePositionSubscription_;
-
-  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr
-      deflectorPositionSubscription_;
-
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr
-      augerOverloadSubscription_;
-
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr
-      resetAugerFaultSubscription_;
+      lidarObstacleSubscription_;
 
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr
-      engineRunningPublisher_;
+      bladeEnabledPublisher_;
 
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr
-      engineRpmPublisher_;
+      bladeRpmPublisher_;
 
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr
-      batterySocPublisher_;
-
-  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr
-      batteryVoltagePublisher_;
-
-  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr
-      dcBusCurrentPublisher_;
-
-  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr
-      tractionPowerLimitPublisher_;
+      cutHeightPublisher_;
 
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr
-      augerEngagedPublisher_;
-
-  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr
-      augerRpmPublisher_;
+      lidarObstaclePublisher_;
 
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr
-      augerOverloadPublisher_;
-
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr
-      augerInterlockOkPublisher_;
-
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr
-      augerFaultLatchedPublisher_;
-
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr
-      augerResetRequiredPublisher_;
+      mowerSafetyStopPublisher_;
 
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr
-      augerStatusTextPublisher_;
+      mowerStatusTextPublisher_;
 
-  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr
-      chutePositionPublisher_;
+  rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr
+      lidarScanPublisher_;
 
-  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr
-      deflectorPositionPublisher_;
-
-  rclcpp::TimerBase::SharedPtr
-      statusTimer_;
+  rclcpp::TimerBase::SharedPtr statusTimer_;
 };
 
 int main(int argc, char **argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<AutomowerToolController>());
+  auto node = std::make_shared<AutomowerToolController>();
+  rclcpp::spin(node);
   rclcpp::shutdown();
   return 0;
 }

@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>autoMower Mobile Control</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7ef;
+      --panel: rgba(255, 255, 255, 0.86);
+      --panel-strong: rgba(255, 255, 255, 0.96);
+      --ink: #1b2a17;
+      --muted: #5d6d57;
+      --accent: #2d7a35;
+      --accent-strong: #195923;
+      --danger: #b52222;
+      --warn: #c96b00;
+      --line: rgba(37, 61, 31, 0.16);
+      --shadow: 0 18px 40px rgba(33, 55, 28, 0.14);
+      --radius: 22px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(98, 167, 91, 0.34), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(255, 183, 77, 0.26), transparent 24%),
+        linear-gradient(160deg, #edf5df 0%, #eff1ea 46%, #d9e9d3 100%);
+      padding: 18px;
+    }
+
+    .app {
+      max-width: 1040px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    .hero,
+    .panel {
+      background: var(--panel);
+      backdrop-filter: blur(18px);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: 20px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(1.9rem, 6vw, 3.2rem);
+      line-height: 0.95;
+      letter-spacing: -0.06em;
+      text-transform: uppercase;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.98rem;
+    }
+
+    .connection-row {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+    }
+
+    .field label,
+    .status-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    input[type="text"],
+    input[type="range"] {
+      width: 100%;
+    }
+
+    input[type="text"] {
+      border: 1px solid rgba(44, 82, 34, 0.2);
+      border-radius: 16px;
+      padding: 14px 16px;
+      font-size: 1rem;
+      background: var(--panel-strong);
+      color: var(--ink);
+    }
+
+    button {
+      border: none;
+      border-radius: 18px;
+      padding: 14px 18px;
+      font-size: 1rem;
+      font-weight: 700;
+      color: white;
+      background: var(--accent);
+      box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.15);
+      touch-action: manipulation;
+    }
+
+    button.secondary {
+      background: #5f6f58;
+    }
+
+    button.warn {
+      background: var(--warn);
+    }
+
+    button.danger {
+      background: var(--danger);
+    }
+
+    button:active {
+      transform: translateY(1px) scale(0.995);
+    }
+
+    .status-strip {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .status-card {
+      background: rgba(255, 255, 255, 0.78);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 12px 14px;
+    }
+
+    .status-value {
+      font-size: 1.1rem;
+      font-weight: 800;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+    }
+
+    .panel {
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .panel h2 {
+      margin: 0;
+      font-size: 1.15rem;
+      letter-spacing: -0.03em;
+    }
+
+    .quick-actions,
+    .mode-grid,
+    .control-pad,
+    .toggles {
+      display: grid;
+      gap: 10px;
+    }
+
+    .quick-actions,
+    .mode-grid,
+    .toggles {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .control-pad {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-items: stretch;
+    }
+
+    .control-pad .spacer {
+      visibility: hidden;
+    }
+
+    .control-button {
+      min-height: 72px;
+      font-size: 1.05rem;
+    }
+
+    .slider-row {
+      display: grid;
+      gap: 6px;
+    }
+
+    .slider-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+
+    input[type="range"] {
+      accent-color: var(--accent);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.65);
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .hint {
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .footer-note {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    @media (max-width: 720px) {
+      body {
+        padding: 12px;
+      }
+
+      .connection-row {
+        grid-template-columns: 1fr;
+      }
+
+      .status-strip {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="hero">
+      <h1>autoMower Mobile Control</h1>
+      <p>Telefon steruje tymi samymi topikami ROS 2 co klawiaturowy teleop. Foxglove zostaje do podglądu, a ten panel wysyła komendy przez rosbridge.</p>
+      <div class="connection-row">
+        <div class="field">
+          <label for="rosbridgeUrl">Rosbridge WebSocket</label>
+          <input id="rosbridgeUrl" type="text" value="ws://localhost:9090">
+        </div>
+        <button id="connectButton" type="button">Connect</button>
+      </div>
+      <div class="status-strip">
+        <div class="status-card">
+          <div class="status-label">Connection</div>
+          <div id="connectionStatus" class="status-value">Disconnected</div>
+        </div>
+        <div class="status-card">
+          <div class="status-label">Mower Status</div>
+          <div id="mowerStatus" class="status-value">waiting_for_data</div>
+        </div>
+        <div class="status-card">
+          <div class="status-label">Blade RPM</div>
+          <div id="bladeRpm" class="status-value">0</div>
+        </div>
+        <div class="status-card">
+          <div class="status-label">Safety Stop</div>
+          <div id="safetyStop" class="status-value">false</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>Drive</h2>
+        <div class="control-pad">
+          <div class="spacer">.</div>
+          <button class="control-button" type="button" data-drive="forward">Forward</button>
+          <div class="spacer">.</div>
+          <button class="control-button" type="button" data-drive="left">Left</button>
+          <button class="control-button danger" id="stopButton" type="button">Stop</button>
+          <button class="control-button" type="button" data-drive="right">Right</button>
+          <div class="spacer">.</div>
+          <button class="control-button secondary" type="button" data-drive="reverse">Reverse</button>
+          <div class="spacer">.</div>
+        </div>
+        <div class="slider-row">
+          <div class="slider-meta"><span>Linear speed</span><span id="linearValue">0.45 m/s</span></div>
+          <input id="linearSpeed" type="range" min="0.10" max="1.00" step="0.05" value="0.45">
+        </div>
+        <div class="slider-row">
+          <div class="slider-meta"><span>Turn rate</span><span id="angularValue">0.90 rad/s</span></div>
+          <input id="angularSpeed" type="range" min="0.20" max="2.00" step="0.05" value="0.90">
+        </div>
+        <div class="quick-actions">
+          <button id="manualModeButton" type="button" class="secondary">Manual Drive</button>
+          <button id="mowingModeButton" type="button">Mowing Mode</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Mower Tooling</h2>
+        <div class="toggles">
+          <button id="engineButton" type="button" class="secondary">Blade Drive Off</button>
+          <button id="bladeButton" type="button" class="secondary">Blade Request Off</button>
+          <button id="obstacleButton" type="button" class="warn">Obstacle Off</button>
+          <button id="estopButton" type="button" class="danger">E-Stop Off</button>
+        </div>
+        <div class="slider-row">
+          <div class="slider-meta"><span>Blade power</span><span id="bladePowerValue">0.55</span></div>
+          <input id="bladePower" type="range" min="0.00" max="1.00" step="0.05" value="0.55">
+        </div>
+        <div class="slider-row">
+          <div class="slider-meta"><span>Cut height bias</span><span id="cutHeightValue">0.00</span></div>
+          <input id="cutHeight" type="range" min="-1.00" max="1.00" step="0.05" value="0.00">
+        </div>
+        <div class="mode-grid">
+          <span class="pill" id="profilePill">Profile: blade</span>
+          <span class="pill" id="foxgloveHint">Foxglove: ws://host:8765</span>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <h2>Use From Phone</h2>
+      <p class="hint">1. On the Mac run `./scripts/run_full_session.sh --recreate` once if the container is old. 2. Run `./scripts/run_mobile_control.sh`. 3. Open the printed `http://...:8080` URL on the phone. 4. In Foxglove on the phone or another device, connect to `ws://MAC_IP:8765`.</p>
+      <p class="footer-note">The page publishes `/cmd_vel`, `/work_mode`, `/engine_enabled`, `/tool_enabled`, `/tool_power`, `/tool_angle`, `/simulate_lidar_obstacle`, and `/emergency_stop`. It also subscribes to `/mower/status_text`, `/mower/blade_rpm`, `/mower/cut_height`, `/mower/lidar_obstacle`, and `/mower/safety_stop`.</p>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      socket: null,
+      connected: false,
+      reconnectTimer: null,
+      publishTimer: null,
+      drive: { linear: 0.0, angular: 0.0 },
+      workMode: "mowing",
+      toolProfile: "blade",
+      engineEnabled: false,
+      bladeEnabled: false,
+      bladePower: 0.55,
+      cutHeightBias: 0.0,
+      obstacle: false,
+      emergencyStop: false,
+    };
+
+    const topicTypes = {
+      "/cmd_vel": "geometry_msgs/msg/Twist",
+      "/work_mode": "std_msgs/msg/String",
+      "/tool_profile": "std_msgs/msg/String",
+      "/tool_enabled": "std_msgs/msg/Bool",
+      "/tool_power": "std_msgs/msg/Float32",
+      "/tool_angle": "std_msgs/msg/Float32",
+      "/engine_enabled": "std_msgs/msg/Bool",
+      "/simulate_lidar_obstacle": "std_msgs/msg/Bool",
+      "/emergency_stop": "std_msgs/msg/Bool",
+    };
+
+    const connectionStatus = document.getElementById("connectionStatus");
+    const mowerStatus = document.getElementById("mowerStatus");
+    const bladeRpm = document.getElementById("bladeRpm");
+    const safetyStop = document.getElementById("safetyStop");
+    const rosbridgeUrl = document.getElementById("rosbridgeUrl");
+    const connectButton = document.getElementById("connectButton");
+    const linearSpeed = document.getElementById("linearSpeed");
+    const angularSpeed = document.getElementById("angularSpeed");
+    const linearValue = document.getElementById("linearValue");
+    const angularValue = document.getElementById("angularValue");
+    const bladePower = document.getElementById("bladePower");
+    const bladePowerValue = document.getElementById("bladePowerValue");
+    const cutHeight = document.getElementById("cutHeight");
+    const cutHeightValue = document.getElementById("cutHeightValue");
+    const engineButton = document.getElementById("engineButton");
+    const bladeButton = document.getElementById("bladeButton");
+    const obstacleButton = document.getElementById("obstacleButton");
+    const estopButton = document.getElementById("estopButton");
+    const profilePill = document.getElementById("profilePill");
+    const foxgloveHint = document.getElementById("foxgloveHint");
+
+    function send(message) {
+      if (!state.connected || !state.socket) {
+        return;
+      }
+
+      state.socket.send(JSON.stringify(message));
+    }
+
+    function advertiseTopics() {
+      Object.entries(topicTypes).forEach(([topic, type]) => {
+        send({ op: "advertise", topic, type });
+      });
+    }
+
+    function subscribeTopics() {
+      [
+        "/mower/status_text",
+        "/mower/blade_rpm",
+        "/mower/cut_height",
+        "/mower/lidar_obstacle",
+        "/mower/safety_stop",
+      ].forEach((topic) => {
+        send({ op: "subscribe", topic });
+      });
+    }
+
+    function publishState() {
+      send({
+        op: "publish",
+        topic: "/cmd_vel",
+        msg: {
+          linear: { x: state.drive.linear, y: 0.0, z: 0.0 },
+          angular: { x: 0.0, y: 0.0, z: state.drive.angular },
+        },
+      });
+
+      send({ op: "publish", topic: "/work_mode", msg: { data: state.workMode } });
+      send({ op: "publish", topic: "/tool_profile", msg: { data: state.toolProfile } });
+      send({ op: "publish", topic: "/tool_enabled", msg: { data: state.bladeEnabled } });
+      send({ op: "publish", topic: "/tool_power", msg: { data: state.bladePower } });
+      send({ op: "publish", topic: "/tool_angle", msg: { data: state.cutHeightBias } });
+      send({ op: "publish", topic: "/engine_enabled", msg: { data: state.engineEnabled } });
+      send({ op: "publish", topic: "/simulate_lidar_obstacle", msg: { data: state.obstacle } });
+      send({ op: "publish", topic: "/emergency_stop", msg: { data: state.emergencyStop } });
+    }
+
+    function resetTransientSafetyState() {
+      state.drive.linear = 0.0;
+      state.drive.angular = 0.0;
+      state.obstacle = false;
+    }
+
+    function publishSafetyReset() {
+      send({ op: "publish", topic: "/simulate_lidar_obstacle", msg: { data: false } });
+      send({ op: "publish", topic: "/cmd_vel", msg: {
+        linear: { x: 0.0, y: 0.0, z: 0.0 },
+        angular: { x: 0.0, y: 0.0, z: 0.0 },
+      } });
+    }
+
+    function startPublishing() {
+      stopPublishing();
+      state.publishTimer = window.setInterval(publishState, 150);
+      publishState();
+    }
+
+    function stopPublishing() {
+      if (state.publishTimer) {
+        window.clearInterval(state.publishTimer);
+        state.publishTimer = null;
+      }
+    }
+
+    function setConnection(connected, label) {
+      state.connected = connected;
+      connectionStatus.textContent = label;
+      connectButton.textContent = connected ? "Reconnect" : "Connect";
+    }
+
+    function disconnect() {
+      stopPublishing();
+      if (state.socket) {
+        state.socket.close();
+        state.socket = null;
+      }
+      setConnection(false, "Disconnected");
+    }
+
+    function connect() {
+      disconnect();
+      const url = rosbridgeUrl.value.trim();
+
+      if (!url) {
+        setConnection(false, "Missing URL");
+        return;
+      }
+
+      const socket = new WebSocket(url);
+      state.socket = socket;
+      setConnection(false, "Connecting...");
+
+      socket.addEventListener("open", () => {
+        resetTransientSafetyState();
+        updateLabels();
+        setConnection(true, "Connected");
+        advertiseTopics();
+        publishSafetyReset();
+        subscribeTopics();
+        startPublishing();
+      });
+
+      socket.addEventListener("close", () => {
+        stopPublishing();
+        setConnection(false, "Disconnected");
+      });
+
+      socket.addEventListener("error", () => {
+        setConnection(false, "Connection Error");
+      });
+
+      socket.addEventListener("message", (event) => {
+        let payload;
+        try {
+          payload = JSON.parse(event.data);
+        } catch (error) {
+          return;
+        }
+
+        if (payload.topic === "/mower/status_text") {
+          mowerStatus.textContent = payload.msg.data;
+        }
+
+        if (payload.topic === "/mower/blade_rpm") {
+          bladeRpm.textContent = Number(payload.msg.data).toFixed(0);
+        }
+
+        if (payload.topic === "/mower/safety_stop") {
+          safetyStop.textContent = String(payload.msg.data);
+        }
+
+        if (payload.topic === "/mower/cut_height") {
+          cutHeightValue.textContent = Number(payload.msg.data).toFixed(2) + " m";
+        }
+
+        if (payload.topic === "/mower/lidar_obstacle") {
+          state.obstacle = Boolean(payload.msg.data);
+          updateLabels();
+        }
+      });
+    }
+
+    function updateDriveButton(direction) {
+      const linear = Number(linearSpeed.value);
+      const angular = Number(angularSpeed.value);
+
+      if (direction === "forward") {
+        state.drive.linear = linear;
+        state.drive.angular = 0.0;
+      }
+
+      if (direction === "reverse") {
+        state.drive.linear = -linear;
+        state.drive.angular = 0.0;
+      }
+
+      if (direction === "left") {
+        state.drive.linear = 0.0;
+        state.drive.angular = angular;
+      }
+
+      if (direction === "right") {
+        state.drive.linear = 0.0;
+        state.drive.angular = -angular;
+      }
+
+      publishState();
+    }
+
+    function stopDrive() {
+      state.drive.linear = 0.0;
+      state.drive.angular = 0.0;
+      publishState();
+    }
+
+    function bindDriveControl(button, direction) {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        updateDriveButton(direction);
+      });
+
+      button.addEventListener("touchstart", (event) => {
+        event.preventDefault();
+        updateDriveButton(direction);
+      }, { passive: false });
+    }
+
+    function updateLabels() {
+      linearValue.textContent = Number(linearSpeed.value).toFixed(2) + " m/s";
+      angularValue.textContent = Number(angularSpeed.value).toFixed(2) + " rad/s";
+      bladePowerValue.textContent = Number(bladePower.value).toFixed(2);
+      cutHeightValue.textContent = Number(cutHeight.value).toFixed(2);
+      engineButton.textContent = state.engineEnabled ? "Blade Drive On" : "Blade Drive Off";
+      bladeButton.textContent = state.bladeEnabled ? "Blade Request On" : "Blade Request Off";
+      obstacleButton.textContent = state.obstacle ? "Obstacle On" : "Obstacle Off";
+      estopButton.textContent = state.emergencyStop ? "E-Stop On" : "E-Stop Off";
+      profilePill.textContent = "Profile: " + state.toolProfile;
+      const host = window.location.hostname || "localhost";
+      foxgloveHint.textContent = "Foxglove: ws://" + host + ":8765";
+    }
+
+    connectButton.addEventListener("click", connect);
+    document.getElementById("manualModeButton").addEventListener("click", () => {
+      state.workMode = "manual_drive";
+      publishState();
+    });
+    document.getElementById("mowingModeButton").addEventListener("click", () => {
+      state.workMode = "mowing";
+      state.toolProfile = "blade";
+      publishState();
+      updateLabels();
+    });
+    document.getElementById("stopButton").addEventListener("click", stopDrive);
+    engineButton.addEventListener("click", () => {
+      state.engineEnabled = !state.engineEnabled;
+      publishState();
+      updateLabels();
+    });
+    bladeButton.addEventListener("click", () => {
+      state.bladeEnabled = !state.bladeEnabled;
+      publishState();
+      updateLabels();
+    });
+    obstacleButton.addEventListener("click", () => {
+      state.obstacle = !state.obstacle;
+      publishState();
+      updateLabels();
+    });
+    estopButton.addEventListener("click", () => {
+      state.emergencyStop = !state.emergencyStop;
+      if (state.emergencyStop) {
+        stopDrive();
+      }
+      publishState();
+      updateLabels();
+    });
+    linearSpeed.addEventListener("input", updateLabels);
+    angularSpeed.addEventListener("input", updateLabels);
+    bladePower.addEventListener("input", () => {
+      state.bladePower = Number(bladePower.value);
+      publishState();
+      updateLabels();
+    });
+    cutHeight.addEventListener("input", () => {
+      state.cutHeightBias = Number(cutHeight.value);
+      publishState();
+      updateLabels();
+    });
+
+    document.querySelectorAll("[data-drive]").forEach((button) => {
+      bindDriveControl(button, button.dataset.drive);
+    });
+
+    rosbridgeUrl.value = "ws://" + (window.location.hostname || "localhost") + ":9090";
+    updateLabels();
+  </script>
+</body>
+</html>

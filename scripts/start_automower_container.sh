@@ -3,12 +3,13 @@
 set -euo pipefail
 
 # Create or reuse the ROS workflow container with the expected bind mounts and
-# Foxglove port mapping.
+# host port mappings for Foxglove and mobile-control rosbridge.
 
 container_name="${CONTAINER_NAME:-automower_ros}"
 image_name="${IMAGE_NAME:-env-ros2}"
 config_volume="${CONFIG_VOLUME:-automower_ros_config}"
 host_port="${FOXGLOVE_PORT:-8765}"
+rosbridge_port="${ROSBRIDGE_PORT:-9090}"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 recreate="false"
 
@@ -38,9 +39,9 @@ fi
 if [[ "$container_exists" == "true" ]]; then
   published_ports="$(docker inspect "$container_name" --format '{{json .HostConfig.PortBindings}}')"
 
-  if [[ "$published_ports" != *'8765/tcp'* ]] && [[ "$recreate" != "true" ]]; then
+  if [[ "$published_ports" != *'8765/tcp'* || "$published_ports" != *'9090/tcp'* ]] && [[ "$recreate" != "true" ]]; then
     cat >&2 <<EOF
-container '$container_name' already exists but does not publish port 8765.
+container '$container_name' already exists but does not publish the required host ports.
 
 Run this once to rebuild the workflow container correctly:
   ./scripts/start_automower_container.sh --recreate
@@ -62,6 +63,7 @@ if [[ "$container_exists" == "false" ]]; then
     -v "$config_volume:/config" \
     -w /automower/ros2_ws \
     -p "$host_port:8765" \
+    -p "$rosbridge_port:9090" \
     "$image_name" >/dev/null
 else
   docker start "$container_name" >/dev/null
@@ -69,4 +71,5 @@ fi
 
 echo "container '$container_name' is ready"
 echo "foxglove bridge host port: $host_port"
+echo "rosbridge host port: $rosbridge_port"
 echo "next: ./scripts/build_ros_workspace.sh"

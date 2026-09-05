@@ -68,23 +68,26 @@ The `automower_description` package provides:
 - the launch file that starts `robot_state_publisher` and the drive node
 - the RViz config used by the experimental XQuartz path
 
-### 4. Tool and mode scaffold
+### 4. Mower operating layer
 
-The repository now includes a generic tool-control scaffold so the same drive
-platform can later host either a mower blade or a snowblower auger.
+The active control path is mower-specific.
 
 The current control-side topics are:
 
-- `/work_mode` with values such as `manual_drive`, `mowing`, `snow_clearing`, or `emergency_stop`
+- `/work_mode` with `manual_drive` and `mowing`
 - `/emergency_stop` as a hard stop signal
-- `/tool_profile` with `blade` or `auger`
-- `/tool_enabled` to arm or disarm the tool
-- `/tool_power` as a normalized `0.0..1.0` setpoint
-- `/tool_angle` as a normalized `-1.0..1.0` setpoint for blade angle or future auger-related steering
+- `/tool_profile` with `blade` as the active profile
+- `/tool_enabled` to request blade activation
+- `/tool_power` as a normalized `0.0..1.0` blade power setpoint
+- `/tool_angle` as a normalized `-1.0..1.0` cut-height bias input
+- `/engine_enabled` for blade-drive state
+- `/simulate_lidar_obstacle` for front obstacle testing
 
-The `automower_tool_controller` node is currently a stub that validates these
-signals and reports the effective tool state. That keeps the repo ready for the
-snowblower path before the real hardware driver exists.
+The `automower_tool_controller` node turns those inputs into mower-specific
+runtime outputs such as `/mower/blade_enabled`, `/mower/blade_rpm`,
+`/mower/cut_height`, `/mower/safety_stop`, `/mower/status_text`, and `/scan`.
+It also disarms blade drive when operator commands time out, so a lost teleop
+session drops back to a safe idle state instead of leaving the cutter armed.
 
 ### 5. Visualization workflow
 
@@ -95,9 +98,10 @@ On macOS, the main workflow is:
 3. launch the ROS stack
 4. launch Foxglove Bridge
 5. connect Foxglove to `ws://localhost:8765`
-6. drive with the WASD teleop script
+6. drive with the WASD teleop script or the phone UI
 
-The wrapper script `./scripts/run_full_session.sh` automates steps 1 to 4.
+The wrapper script `./scripts/run_full_session.sh` automates steps 1 to 4 and
+also starts `rosbridge` on `ws://localhost:9090` for the mobile control page.
 
 ## Main Workflows
 
@@ -113,6 +117,9 @@ If the container was created before Foxglove port publishing was added:
 ./scripts/run_full_session.sh --recreate
 ```
 
+Use `--recreate` at least once after the mobile-control update so Docker also
+publishes `9090` for `rosbridge`.
+
 ### Drive the mower
 
 ```bash
@@ -123,31 +130,43 @@ The teleop is incremental rather than hold-based:
 
 - `w` and `s` increase or decrease forward speed
 - `a` and `d` increase or decrease turn rate
-- `1`, `2`, `3` switch between `manual_drive`, `mowing`, and `snow_clearing`
-- `b` and `n` switch between `blade` and `auger`
-- `i` toggles the engine state
-- `t` toggles auger engagement
-- `r` and `f` increase or decrease engine throttle demand
-- `g` and `h` rotate the chute left and right
-- `y` and `u` adjust the deflector down and up
-- `v` simulates auger overload for testing
-- `j` requests auger fault reset after the auger has been disengaged and the throttle has been reduced
+- `1` switches to `manual_drive`
+- `2` switches to `mowing`
+- the mower path now starts in `mowing` with the `blade` profile as the default operator setup
+- `b` forces the `blade` profile
+- `i` toggles the blade drive state
+- `t` toggles blade enable
+- `r` and `f` increase or decrease blade power demand
+- `g` and `h` lower or raise the cut-height input
+- `o` simulates a lidar obstacle in front of the mower
 - `e` toggles emergency stop
 - `x` or `space` stops the mower
 - `q` quits teleop
 
-In `snow_clearing`, the drive node automatically applies a slower safety
-profile so the same keyboard inputs produce gentler motion and lower turn
-aggression than in summer-oriented modes.
+In `mowing`, the control layer now also exposes a mower deck, blade state, cut
+height estimate, and lidar obstacle state so the mower branch has its own
+runtime model instead of looking like a generic box robot.
 
-The teleop still publishes the generic tool topics for compatibility, but the
-current winter-oriented control path now also publishes hybrid-specific
-commands for engine state, auger engagement, chute position, deflector position,
-and overload simulation.
+The mower tool controller now also applies an operator-command timeout. If the
+teleop stops publishing, blade drive falls back to a safe idle state and
+`/mower/status_text` switches to `operator_command_timeout`.
 
-The auger path now also exposes explicit interlock state, a latched fault, and a
-reset-required signal so the mechanical snowblower workflow can be debugged in
-software before hardware wiring exists.
+### Drive from a phone
+
+```bash
+./scripts/run_mobile_control.sh
+```
+
+This starts a small host-side web server on port `8080` and prints the local
+Wi-Fi URL to open on a phone. The page publishes the same motion and mower
+control topics as the keyboard teleop, but through `rosbridge` on port `9090`.
+
+Typical operator flow:
+
+1. run `./scripts/run_full_session.sh --recreate` once
+2. run `./scripts/run_mobile_control.sh`
+3. open the printed `http://MAC_IP:8080` on the phone
+4. connect Foxglove on the phone or another device to `ws://MAC_IP:8765`
 
 Experimental joystick path:
 
@@ -172,13 +191,6 @@ need a host-side bridge, so treat this as the software integration path first.
 ### Test work modes and tool state
 
 ```bash
-./scripts/set_work_mode.sh snow_clearing
-./scripts/set_tool_state.sh auger true 0.7 0.0
-```
-
-You can switch back to mower-oriented behavior later with:
-
-```bash
 ./scripts/set_work_mode.sh mowing
 ./scripts/set_tool_state.sh blade true 0.5 -0.3
 ```
@@ -193,10 +205,11 @@ The most important runtime interfaces are:
 - `/tf` and `/tf_static` for transforms
 - `/visualization_marker_array` for the simple mower body visualization
 - `/robot_description` for the URDF model
-- `/engine_enabled`, `/engine_throttle`, and `/auger_engaged` for the hybrid winter attachment model
-- `/hybrid/engine_rpm`, `/hybrid/battery_voltage`, `/hybrid/battery_soc`, and `/hybrid/dc_bus_current` for simulated power-train telemetry
-- `/hybrid/auger_rpm`, `/hybrid/auger_overload`, `/hybrid/chute_position`, and `/hybrid/deflector_position` for mechanical auger state
-- `/hybrid/auger_interlock_ok`, `/hybrid/auger_fault_latched`, `/hybrid/auger_reset_required`, and `/hybrid/auger_status_text` for auger safety and recovery state
+- `/scan` for the synthetic lidar scan anchored at `lidar_link`
+- `/mower/blade_enabled`, `/mower/blade_rpm`, `/mower/cut_height`, `/mower/lidar_obstacle`, `/mower/safety_stop`, and `/mower/status_text` for mower-specific runtime state
+
+In Foxglove, the marker view now also shows a forward mower safety zone and a
+simple mowing trail in `odom` while the blade is active and the mower is moving.
 
 The main frame chain is:
 
@@ -217,6 +230,7 @@ odom -> base_footprint -> base_link -> wheel links
 - [docs/project-structure.md](docs/project-structure.md)
 - [docs/diagrams.md](docs/diagrams.md)
 - [docs/learning-guide.md](docs/learning-guide.md)
+- [docs/mobile-control.md](docs/mobile-control.md)
 - [docs/hybrid-snowblower-plan.md](docs/hybrid-snowblower-plan.md)
 - [docs/visualization.md](docs/visualization.md)
 

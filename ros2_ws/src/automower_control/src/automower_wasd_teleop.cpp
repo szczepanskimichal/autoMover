@@ -50,14 +50,10 @@ int main(int argc, char **argv)
 {
   rclcpp::init(argc, argv);
 
-  using namespace std::chrono_literals;
-
   auto node = rclcpp::Node::make_shared("automower_wasd_teleop");
   auto publisher = node->create_publisher<geometry_msgs::msg::Twist>(
       "/cmd_vel",
       10);
-  // Keep operator-facing mode and tool control in the same keyboard loop so a
-  // single teleop process can drive both the chassis and the winter attachment.
   auto workModePublisher = node->create_publisher<std_msgs::msg::String>(
       "/work_mode",
       10);
@@ -79,23 +75,8 @@ int main(int argc, char **argv)
   auto engineEnabledPublisher = node->create_publisher<std_msgs::msg::Bool>(
       "/engine_enabled",
       10);
-  auto engineThrottlePublisher = node->create_publisher<std_msgs::msg::Float32>(
-      "/engine_throttle",
-      10);
-  auto augerEngagedPublisher = node->create_publisher<std_msgs::msg::Bool>(
-      "/auger_engaged",
-      10);
-  auto chutePositionPublisher = node->create_publisher<std_msgs::msg::Float32>(
-      "/chute_position",
-      10);
-  auto deflectorPositionPublisher = node->create_publisher<std_msgs::msg::Float32>(
-      "/deflector_position",
-      10);
-  auto simulateAugerOverloadPublisher = node->create_publisher<std_msgs::msg::Bool>(
-      "/simulate_auger_overload",
-      10);
-  auto resetAugerFaultPublisher = node->create_publisher<std_msgs::msg::Bool>(
-      "/reset_auger_fault",
+  auto simulateLidarObstaclePublisher = node->create_publisher<std_msgs::msg::Bool>(
+      "/simulate_lidar_obstacle",
       10);
 
   TerminalRawMode rawMode;
@@ -104,18 +85,14 @@ int main(int argc, char **argv)
       << "WASD teleop\n"
       << "w/s: increase/decrease forward speed\n"
       << "a/d: increase/decrease turn rate\n"
-      << "1: manual mode\n"
+      << "1: manual drive mode\n"
       << "2: mowing mode\n"
-      << "3: snow mode\n"
       << "b: blade profile\n"
-      << "n: auger profile\n"
-      << "i: engine on/off\n"
-      << "t: auger clutch on/off\n"
-      << "r/f: engine throttle up/down\n"
-      << "g/h: chute left/right\n"
-      << "y/u: deflector down/up\n"
-      << "v: simulate auger overload\n"
-      << "j: reset latched auger fault\n"
+      << "i: blade drive on-off\n"
+      << "t: blade on-off\n"
+      << "r/f: blade power up-down\n"
+      << "g/h: lower-raise cut height input\n"
+      << "o: simulate lidar obstacle\n"
       << "e: emergency stop toggle\n"
       << "x or space: stop\n"
       << "q: quit\n";
@@ -128,10 +105,10 @@ int main(int argc, char **argv)
   geometry_msgs::msg::Twist currentCmd;
   geometry_msgs::msg::Twist stopCmd;
   std_msgs::msg::String workMode;
-  workMode.data = "manual_drive";
+  workMode.data = "mowing";
 
   std_msgs::msg::String toolProfile;
-  toolProfile.data = "auger";
+  toolProfile.data = "blade";
 
   std_msgs::msg::Bool toolEnabled;
   toolEnabled.data = false;
@@ -139,37 +116,20 @@ int main(int argc, char **argv)
   std_msgs::msg::Bool engineEnabled;
   engineEnabled.data = false;
 
-  std_msgs::msg::Bool augerEngaged;
-  augerEngaged.data = false;
-
   std_msgs::msg::Bool emergencyStop;
   emergencyStop.data = false;
 
   std_msgs::msg::Float32 toolPower;
   toolPower.data = 0.0F;
 
-  std_msgs::msg::Float32 engineThrottle;
-  engineThrottle.data = 0.0F;
-
   std_msgs::msg::Float32 toolAngle;
   toolAngle.data = 0.0F;
 
-  std_msgs::msg::Float32 chutePosition;
-  chutePosition.data = 0.0F;
-
-  std_msgs::msg::Float32 deflectorPosition;
-  deflectorPosition.data = 0.0F;
-
-  std_msgs::msg::Bool simulateAugerOverload;
-  simulateAugerOverload.data = false;
-
-  std_msgs::msg::Bool resetAugerFault;
-  resetAugerFault.data = false;
+  std_msgs::msg::Bool simulateLidarObstacle;
+  simulateLidarObstacle.data = false;
 
   rclcpp::WallRate loopRate(20.0);
 
-  // Keep command tuning local and readable instead of spreading literals across
-  // the key handling branches.
   auto clamp = [](double value, double limit)
   {
     if (value > limit)
@@ -193,12 +153,10 @@ int main(int argc, char **argv)
         << " mode=" << workMode.data
         << " tool=" << toolProfile.data
         << " engine=" << (engineEnabled.data ? "1" : "0")
-        << " throttle=" << engineThrottle.data
-        << " auger=" << (augerEngaged.data ? "1" : "0")
-        << " overload=" << (simulateAugerOverload.data ? "1" : "0")
-        << " reset=" << (resetAugerFault.data ? "1" : "0")
-        << " chute=" << chutePosition.data
-        << " deflector=" << deflectorPosition.data
+        << " power=" << toolPower.data
+        << " blade_on=" << (toolEnabled.data ? "1" : "0")
+        << " lidar=" << (simulateLidarObstacle.data ? "1" : "0")
+        << " tool_angle=" << toolAngle.data
         << " estop=" << (emergencyStop.data ? "1" : "0")
         << "        "
         << std::flush;
@@ -206,8 +164,6 @@ int main(int argc, char **argv)
 
   auto publishOperatorState = [&]()
   {
-    // Publish every loop so late subscribers still converge to the current
-    // operator state without needing a dedicated latched command layer.
     workModePublisher->publish(workMode);
     emergencyStopPublisher->publish(emergencyStop);
     toolProfilePublisher->publish(toolProfile);
@@ -215,19 +171,12 @@ int main(int argc, char **argv)
     toolPowerPublisher->publish(toolPower);
     toolAnglePublisher->publish(toolAngle);
     engineEnabledPublisher->publish(engineEnabled);
-    engineThrottlePublisher->publish(engineThrottle);
-    augerEngagedPublisher->publish(augerEngaged);
-    chutePositionPublisher->publish(chutePosition);
-    deflectorPositionPublisher->publish(deflectorPosition);
-    simulateAugerOverloadPublisher->publish(simulateAugerOverload);
-    resetAugerFaultPublisher->publish(resetAugerFault);
-    resetAugerFault.data = false;
+    simulateLidarObstaclePublisher->publish(simulateLidarObstacle);
   };
 
   printStatus(currentCmd);
   publishOperatorState();
 
-  // Keep publishing the current target command until the operator changes it.
   while (rclcpp::ok())
   {
     fd_set readSet;
@@ -300,22 +249,13 @@ int main(int argc, char **argv)
         break;
 
       case '1':
-        // Manual mode leaves the chassis free while keeping the current tool
-        // selection available for later arming.
         workMode.data = "manual_drive";
         printStatus(currentCmd);
         break;
 
       case '2':
         workMode.data = "mowing";
-        printStatus(currentCmd);
-        break;
-
-      case '3':
-        // Snow mode defaults back to the auger profile so winter sessions start
-        // from the attachment we currently care about most.
-        workMode.data = "snow_clearing";
-        toolProfile.data = "auger";
+        toolProfile.data = "blade";
         printStatus(currentCmd);
         break;
 
@@ -325,16 +265,9 @@ int main(int argc, char **argv)
         printStatus(currentCmd);
         break;
 
-      case 'n':
-      case 'N':
-        toolProfile.data = "auger";
-        printStatus(currentCmd);
-        break;
-
       case 't':
       case 'T':
-        augerEngaged.data = !augerEngaged.data;
-        toolEnabled.data = augerEngaged.data;
+        toolEnabled.data = !toolEnabled.data;
         printStatus(currentCmd);
         break;
 
@@ -346,53 +279,31 @@ int main(int argc, char **argv)
 
       case 'r':
       case 'R':
-        engineThrottle.data = static_cast<float>(clamp(engineThrottle.data + 0.1F, 1.0));
-        toolPower.data = engineThrottle.data;
+        toolPower.data = static_cast<float>(clamp(toolPower.data + 0.1F, 1.0));
         printStatus(currentCmd);
         break;
 
       case 'f':
       case 'F':
-        engineThrottle.data = static_cast<float>(clamp(engineThrottle.data - 0.1F, 1.0));
-        toolPower.data = engineThrottle.data;
+        toolPower.data = static_cast<float>(clamp(toolPower.data - 0.1F, 1.0));
         printStatus(currentCmd);
         break;
 
       case 'g':
       case 'G':
-        chutePosition.data = static_cast<float>(clamp(chutePosition.data - 0.1F, 1.0));
-        toolAngle.data = chutePosition.data;
+        toolAngle.data = static_cast<float>(clamp(toolAngle.data - 0.1F, 1.0));
         printStatus(currentCmd);
         break;
 
       case 'h':
       case 'H':
-        chutePosition.data = static_cast<float>(clamp(chutePosition.data + 0.1F, 1.0));
-        toolAngle.data = chutePosition.data;
+        toolAngle.data = static_cast<float>(clamp(toolAngle.data + 0.1F, 1.0));
         printStatus(currentCmd);
         break;
 
-      case 'y':
-      case 'Y':
-        deflectorPosition.data = static_cast<float>(clamp(deflectorPosition.data - 0.1F, 1.0));
-        printStatus(currentCmd);
-        break;
-
-      case 'u':
-      case 'U':
-        deflectorPosition.data = static_cast<float>(clamp(deflectorPosition.data + 0.1F, 1.0));
-        printStatus(currentCmd);
-        break;
-
-      case 'v':
-      case 'V':
-        simulateAugerOverload.data = !simulateAugerOverload.data;
-        printStatus(currentCmd);
-        break;
-
-      case 'j':
-      case 'J':
-        resetAugerFault.data = true;
+      case 'o':
+      case 'O':
+        simulateLidarObstacle.data = !simulateLidarObstacle.data;
         printStatus(currentCmd);
         break;
 
@@ -401,17 +312,12 @@ int main(int argc, char **argv)
         emergencyStop.data = !emergencyStop.data;
         if (emergencyStop.data)
         {
-          // Emergency stop clears motion and tool output immediately, while the
-          // latched mode selection remains visible to the rest of the stack.
           currentCmd = stopCmd;
           engineEnabled.data = false;
-          augerEngaged.data = false;
           toolEnabled.data = false;
-          engineThrottle.data = 0.0F;
           toolPower.data = 0.0F;
-          chutePosition.data = 0.0F;
           toolAngle.data = 0.0F;
-          simulateAugerOverload.data = false;
+          simulateLidarObstacle.data = false;
         }
         printStatus(currentCmd);
         break;
@@ -427,11 +333,9 @@ int main(int argc, char **argv)
       case 'Q':
         currentCmd = stopCmd;
         engineEnabled.data = false;
-        augerEngaged.data = false;
         toolEnabled.data = false;
-        engineThrottle.data = 0.0F;
         toolPower.data = 0.0F;
-        simulateAugerOverload.data = false;
+        simulateLidarObstacle.data = false;
         publisher->publish(stopCmd);
         publishOperatorState();
         std::cout << "\n";

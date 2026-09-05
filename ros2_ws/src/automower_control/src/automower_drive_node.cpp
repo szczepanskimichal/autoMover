@@ -7,10 +7,12 @@
 #include "rclcpp/rclcpp.hpp"
 
 #include "geometry_msgs/msg/twist.hpp"
+#include "geometry_msgs/msg/point.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/bool.hpp"
+#include "std_msgs/msg/float32.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
@@ -33,6 +35,8 @@ public:
           x_(0.0),
           y_(0.0),
           yaw_(0.0),
+          lastRequestedLinear_(0.0),
+          lastRequestedAngular_(0.0),
           hasLastCommandTime_(false),
           hasLastTime_(false),
           lastCommandTime_(0, 0, this->get_clock()->get_clock_type()),
@@ -62,6 +66,33 @@ public:
                 10,
                 std::bind(
                     &AutoMowerDriveNode::emergencyStopCallback,
+                    this,
+                    std::placeholders::_1));
+
+        mowerSafetyStopSubscription_ =
+            this->create_subscription<std_msgs::msg::Bool>(
+                "/mower/safety_stop",
+                10,
+                std::bind(
+                    &AutoMowerDriveNode::mowerSafetyStopCallback,
+                    this,
+                    std::placeholders::_1));
+
+        bladeEnabledSubscription_ =
+            this->create_subscription<std_msgs::msg::Bool>(
+                "/mower/blade_enabled",
+                10,
+                std::bind(
+                    &AutoMowerDriveNode::bladeEnabledCallback,
+                    this,
+                    std::placeholders::_1));
+
+        cutHeightSubscription_ =
+            this->create_subscription<std_msgs::msg::Float32>(
+                "/mower/cut_height",
+                10,
+                std::bind(
+                    &AutoMowerDriveNode::cutHeightCallback,
                     this,
                     std::placeholders::_1));
 
@@ -124,13 +155,55 @@ private:
 
     static constexpr double WHEEL_Y = 0.48;
 
+    static constexpr double DECK_RADIUS = 0.33;
+
+    static constexpr double DECK_HEIGHT = 0.12;
+
+    static constexpr double DECK_X = 0.05;
+
+    static constexpr double DECK_Z = -0.17;
+
+    static constexpr double BLADE_LENGTH = 0.48;
+
+    static constexpr double BLADE_WIDTH = 0.05;
+
+    static constexpr double BLADE_HEIGHT = 0.02;
+
+    static constexpr double LIDAR_MOUNT_X = 0.23;
+
+    static constexpr double LIDAR_MOUNT_Z = 0.18;
+
+    static constexpr double LIDAR_MAST_RADIUS = 0.03;
+
+    static constexpr double LIDAR_MAST_HEIGHT = 0.16;
+
+    static constexpr double LIDAR_RADIUS = 0.075;
+
+    static constexpr double LIDAR_HEIGHT = 0.06;
+
     static constexpr double HALF_PI = 1.57079632679;
 
     static constexpr double CMD_VEL_TIMEOUT = 0.25;
 
-    static constexpr double SNOW_LINEAR_SCALE = 0.45;
+    static constexpr double DEFAULT_CUT_HEIGHT = 0.09;
 
-    static constexpr double SNOW_ANGULAR_SCALE = 0.65;
+    static constexpr double MIN_CUT_HEIGHT = 0.06;
+
+    static constexpr double MAX_CUT_HEIGHT = 0.12;
+
+    static constexpr double SAFETY_ZONE_X = 0.42;
+
+    static constexpr double SAFETY_ZONE_Z = -0.20;
+
+    static constexpr double SAFETY_ZONE_LENGTH = 0.55;
+
+    static constexpr double SAFETY_ZONE_WIDTH = 0.70;
+
+    static constexpr double SAFETY_ZONE_HEIGHT = 0.03;
+
+    static constexpr double TRAIL_POINT_SPACING = 0.18;
+
+    static constexpr std::size_t MAX_TRAIL_POINTS = 120;
 
     // Na razie WheelSpeeds są komendą -1..1.
     // Przyjmujemy, że 1.0 = 1 m/s prędkości liniowej koła.
@@ -147,12 +220,14 @@ private:
 
         hasLastCommandTime_ = true;
         lastCommandTime_ = this->now();
+        lastRequestedLinear_ = msg->linear.x;
+        lastRequestedAngular_ = msg->angular.z;
 
         // Cache the latest requested motion. The fixed-rate state loop below
         // consumes it so integration stays smooth even if key events are bursty.
         currentSpeeds_ =
             driveController_.calculate(
-                msg->linear.x,
+                clampForwardMotion(msg->linear.x),
                 msg->angular.z);
     }
 
@@ -189,27 +264,48 @@ private:
         }
     }
 
+    void mowerSafetyStopCallback(
+        const std_msgs::msg::Bool::SharedPtr msg)
+    {
+        if (msg->data == mowerSafetyStopActive_)
+        {
+            return;
+        }
+
+        mowerSafetyStopActive_ = msg->data;
+        currentSpeeds_ =
+            driveController_.calculate(
+                clampForwardMotion(lastRequestedLinear_),
+                lastRequestedAngular_);
+
+        if (mowerSafetyStopActive_)
+        {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "mower safety stop active: blocking forward motion");
+        }
+        else
+        {
+            RCLCPP_INFO(
+                this->get_logger(),
+                "mower safety stop released");
+        }
+    }
+
     bool driveAllowedInCurrentMode() const
     {
         return workMode_ == "manual_drive" ||
-               workMode_ == "mowing" ||
-               workMode_ == "snow_clearing";
+               workMode_ == "mowing";
     }
 
-    WheelSpeeds applyDriveSafetyProfile(
-        const WheelSpeeds &speeds) const
+    double clampForwardMotion(double linearVelocity) const
     {
-        if (workMode_ != "snow_clearing")
+        if (!mowerSafetyStopActive_)
         {
-            return speeds;
+            return linearVelocity;
         }
 
-        // Snow mode trades speed for traction and operator reaction time.
-        return WheelSpeeds{
-            speeds.frontLeft * SNOW_LINEAR_SCALE,
-            speeds.frontRight * SNOW_LINEAR_SCALE,
-            speeds.rearLeft * SNOW_LINEAR_SCALE,
-            speeds.rearRight * SNOW_LINEAR_SCALE};
+        return std::min(linearVelocity, 0.0);
     }
 
     void publishState()
@@ -239,8 +335,13 @@ private:
             speeds = WheelSpeeds{0.0, 0.0, 0.0, 0.0};
             currentSpeeds_ = speeds;
         }
-
-        speeds = applyDriveSafetyProfile(speeds);
+        else if (mowerSafetyStopActive_)
+        {
+            speeds = driveController_.calculate(
+                clampForwardMotion(lastRequestedLinear_),
+                lastRequestedAngular_);
+            currentSpeeds_ = speeds;
+        }
 
         const double dt =
             (currentTime - lastTime_).seconds();
@@ -256,6 +357,8 @@ private:
             updateOdometry(
                 speeds,
                 dt);
+
+            updateMowingTrail(speeds);
         }
 
         publishJointStates(
@@ -324,8 +427,7 @@ private:
         // aby dodatnie steering dawało dodatnie yaw.
         const double angularVelocity =
             (leftVelocity - rightVelocity) /
-            TRACK_WIDTH *
-            (workMode_ == "snow_clearing" ? SNOW_ANGULAR_SCALE : 1.0);
+            TRACK_WIDTH;
 
         x_ +=
             linearVelocity *
@@ -403,8 +505,7 @@ private:
 
         const double angularVelocity =
             (leftVelocity - rightVelocity) /
-            TRACK_WIDTH *
-            (workMode_ == "snow_clearing" ? SNOW_ANGULAR_SCALE : 1.0);
+            TRACK_WIDTH;
 
         tf2::Quaternion quaternion;
 
@@ -476,6 +577,24 @@ private:
         markers.markers.push_back(
             makeWheelMarker(stamp, 4, -WHEEL_X, -WHEEL_Y));
 
+        markers.markers.push_back(
+            makeDeckMarker(stamp));
+
+        markers.markers.push_back(
+            makeBladeMarker(stamp));
+
+        markers.markers.push_back(
+            makeSafetyZoneMarker(stamp));
+
+        markers.markers.push_back(
+            makeMowingTrailMarker(stamp));
+
+        markers.markers.push_back(
+            makeLidarMastMarker(stamp));
+
+        markers.markers.push_back(
+            makeLidarMarker(stamp));
+
         markerPublisher_->publish(markers);
     }
 
@@ -500,6 +619,285 @@ private:
         marker.color.r = 0.1F;
         marker.color.g = 0.35F;
         marker.color.b = 0.1F;
+        marker.color.a = 1.0F;
+
+        return marker;
+    }
+
+    void bladeEnabledCallback(
+        const std_msgs::msg::Bool::SharedPtr msg)
+    {
+        bladeEnabled_ = msg->data;
+    }
+
+    void cutHeightCallback(
+        const std_msgs::msg::Float32::SharedPtr msg)
+    {
+        cutHeight_ = std::clamp(
+            static_cast<double>(msg->data),
+            MIN_CUT_HEIGHT,
+            MAX_CUT_HEIGHT);
+    }
+
+    void updateMowingTrail(const WheelSpeeds &speeds)
+    {
+        if (!bladeEnabled_ || mowerSafetyStopActive_)
+        {
+            return;
+        }
+
+        const double leftVelocity =
+            (speeds.frontLeft +
+             speeds.rearLeft) /
+            2.0 *
+            MAX_WHEEL_LINEAR_SPEED;
+
+        const double rightVelocity =
+            (speeds.frontRight +
+             speeds.rearRight) /
+            2.0 *
+            MAX_WHEEL_LINEAR_SPEED;
+
+        const double linearVelocity =
+            (leftVelocity + rightVelocity) / 2.0;
+
+        if (linearVelocity <= 0.02)
+        {
+            return;
+        }
+
+        geometry_msgs::msg::Point trailPoint;
+        trailPoint.x = x_ + std::cos(yaw_) * DECK_X;
+        trailPoint.y = y_ + std::sin(yaw_) * DECK_X;
+        trailPoint.z = 0.01;
+
+        if (!hasLastTrailPoint_)
+        {
+            mowingTrail_.push_back(trailPoint);
+            lastTrailPoint_ = trailPoint;
+            hasLastTrailPoint_ = true;
+            return;
+        }
+
+        const double dx = trailPoint.x - lastTrailPoint_.x;
+        const double dy = trailPoint.y - lastTrailPoint_.y;
+
+        if (std::hypot(dx, dy) < TRAIL_POINT_SPACING)
+        {
+            return;
+        }
+
+        mowingTrail_.push_back(trailPoint);
+        lastTrailPoint_ = trailPoint;
+
+        if (mowingTrail_.size() > MAX_TRAIL_POINTS)
+        {
+            mowingTrail_.erase(mowingTrail_.begin());
+        }
+    }
+
+    visualization_msgs::msg::Marker makeDeckMarker(
+        const rclcpp::Time &stamp) const
+    {
+        visualization_msgs::msg::Marker marker;
+
+        marker.header.stamp = stamp;
+        marker.header.frame_id = "base_link";
+        marker.ns = "automower";
+        marker.id = 5;
+        marker.type = visualization_msgs::msg::Marker::CYLINDER;
+        marker.action = visualization_msgs::msg::Marker::ADD;
+
+        marker.pose.position.x = DECK_X;
+        marker.pose.position.y = 0.0;
+        marker.pose.position.z = DECK_Z;
+
+        marker.pose.orientation.w = 1.0;
+
+        marker.scale.x = DECK_RADIUS * 2.0;
+        marker.scale.y = DECK_RADIUS * 2.0;
+        marker.scale.z = DECK_HEIGHT;
+
+        marker.color.r = 0.75F;
+        marker.color.g = 0.12F;
+        marker.color.b = 0.10F;
+        marker.color.a = 1.0F;
+
+        return marker;
+    }
+
+    visualization_msgs::msg::Marker makeBladeMarker(
+        const rclcpp::Time &stamp) const
+    {
+        visualization_msgs::msg::Marker marker;
+
+        marker.header.stamp = stamp;
+        marker.header.frame_id = "base_link";
+        marker.ns = "automower";
+        marker.id = 6;
+        marker.type = visualization_msgs::msg::Marker::CUBE;
+        marker.action = visualization_msgs::msg::Marker::ADD;
+
+        marker.pose.position.x = DECK_X;
+        marker.pose.position.y = 0.0;
+        marker.pose.position.z =
+            DECK_Z - 0.02 + (cutHeight_ - DEFAULT_CUT_HEIGHT);
+        marker.pose.orientation.w = 1.0;
+
+        marker.scale.x = BLADE_LENGTH;
+        marker.scale.y = BLADE_WIDTH;
+        marker.scale.z = BLADE_HEIGHT;
+
+        if (mowerSafetyStopActive_)
+        {
+            marker.color.r = 0.85F;
+            marker.color.g = 0.18F;
+            marker.color.b = 0.14F;
+        }
+        else if (bladeEnabled_)
+        {
+            marker.color.r = 0.95F;
+            marker.color.g = 0.76F;
+            marker.color.b = 0.10F;
+        }
+        else
+        {
+            marker.color.r = 0.75F;
+            marker.color.g = 0.75F;
+            marker.color.b = 0.78F;
+        }
+        marker.color.a = 1.0F;
+
+        return marker;
+    }
+
+    visualization_msgs::msg::Marker makeSafetyZoneMarker(
+        const rclcpp::Time &stamp) const
+    {
+        visualization_msgs::msg::Marker marker;
+
+        marker.header.stamp = stamp;
+        marker.header.frame_id = "base_link";
+        marker.ns = "automower";
+        marker.id = 9;
+        marker.type = visualization_msgs::msg::Marker::CUBE;
+        marker.action = visualization_msgs::msg::Marker::ADD;
+
+        marker.pose.position.x = SAFETY_ZONE_X;
+        marker.pose.position.y = 0.0;
+        marker.pose.position.z = SAFETY_ZONE_Z;
+        marker.pose.orientation.w = 1.0;
+
+        marker.scale.x = SAFETY_ZONE_LENGTH;
+        marker.scale.y = SAFETY_ZONE_WIDTH;
+        marker.scale.z = SAFETY_ZONE_HEIGHT;
+
+        if (mowerSafetyStopActive_)
+        {
+            marker.color.r = 0.95F;
+            marker.color.g = 0.20F;
+            marker.color.b = 0.16F;
+            marker.color.a = 0.45F;
+        }
+        else
+        {
+            marker.color.r = 0.16F;
+            marker.color.g = 0.80F;
+            marker.color.b = 0.24F;
+            marker.color.a = 0.22F;
+        }
+
+        return marker;
+    }
+
+    visualization_msgs::msg::Marker makeMowingTrailMarker(
+        const rclcpp::Time &stamp) const
+    {
+        visualization_msgs::msg::Marker marker;
+
+        marker.header.stamp = stamp;
+        marker.header.frame_id = "odom";
+        marker.ns = "automower";
+        marker.id = 10;
+        marker.type = visualization_msgs::msg::Marker::CUBE_LIST;
+        marker.action = visualization_msgs::msg::Marker::ADD;
+        marker.pose.orientation.w = 1.0;
+        marker.scale.x = 0.08;
+        marker.scale.y = DECK_RADIUS * 1.35;
+        marker.scale.z = 0.01;
+        marker.color.r = 0.56F;
+        marker.color.g = 0.82F;
+        marker.color.b = 0.42F;
+        marker.color.a = 0.65F;
+        marker.points = mowingTrail_;
+
+        return marker;
+    }
+
+    visualization_msgs::msg::Marker makeLidarMastMarker(
+        const rclcpp::Time &stamp) const
+    {
+        visualization_msgs::msg::Marker marker;
+
+        marker.header.stamp = stamp;
+        marker.header.frame_id = "base_link";
+        marker.ns = "automower";
+        marker.id = 7;
+        marker.type = visualization_msgs::msg::Marker::CYLINDER;
+        marker.action = visualization_msgs::msg::Marker::ADD;
+
+        marker.pose.position.x = LIDAR_MOUNT_X;
+        marker.pose.position.y = 0.0;
+        marker.pose.position.z = LIDAR_MOUNT_Z + LIDAR_MAST_HEIGHT * 0.5;
+        marker.pose.orientation.w = 1.0;
+
+        marker.scale.x = LIDAR_MAST_RADIUS * 2.0;
+        marker.scale.y = LIDAR_MAST_RADIUS * 2.0;
+        marker.scale.z = LIDAR_MAST_HEIGHT;
+
+        marker.color.r = 0.08F;
+        marker.color.g = 0.08F;
+        marker.color.b = 0.08F;
+        marker.color.a = 1.0F;
+
+        return marker;
+    }
+
+    visualization_msgs::msg::Marker makeLidarMarker(
+        const rclcpp::Time &stamp) const
+    {
+        visualization_msgs::msg::Marker marker;
+        tf2::Quaternion quaternion;
+
+        quaternion.setRPY(
+            HALF_PI,
+            0.0,
+            0.0);
+
+        marker.header.stamp = stamp;
+        marker.header.frame_id = "base_link";
+        marker.ns = "automower";
+        marker.id = 8;
+        marker.type = visualization_msgs::msg::Marker::CYLINDER;
+        marker.action = visualization_msgs::msg::Marker::ADD;
+
+        marker.pose.position.x = LIDAR_MOUNT_X;
+        marker.pose.position.y = 0.0;
+        marker.pose.position.z =
+            LIDAR_MOUNT_Z + LIDAR_MAST_HEIGHT + LIDAR_HEIGHT * 0.5;
+
+        marker.pose.orientation.x = quaternion.x();
+        marker.pose.orientation.y = quaternion.y();
+        marker.pose.orientation.z = quaternion.z();
+        marker.pose.orientation.w = quaternion.w();
+
+        marker.scale.x = LIDAR_RADIUS * 2.0;
+        marker.scale.y = LIDAR_RADIUS * 2.0;
+        marker.scale.z = LIDAR_HEIGHT;
+
+        marker.color.r = 0.78F;
+        marker.color.g = 0.68F;
+        marker.color.b = 0.22F;
         marker.color.a = 1.0F;
 
         return marker;
@@ -560,13 +958,29 @@ private:
     double y_;
     double yaw_;
 
+    double lastRequestedLinear_;
+
+    double lastRequestedAngular_;
+
     bool hasLastCommandTime_;
 
     bool hasLastTime_;
 
     bool emergencyStopActive_ = false;
 
-    std::string workMode_ = "manual_drive";
+    bool mowerSafetyStopActive_ = false;
+
+    bool bladeEnabled_ = false;
+
+    double cutHeight_ = DEFAULT_CUT_HEIGHT;
+
+    bool hasLastTrailPoint_ = false;
+
+    geometry_msgs::msg::Point lastTrailPoint_;
+
+    std::vector<geometry_msgs::msg::Point> mowingTrail_;
+
+    std::string workMode_ = "mowing";
 
     rclcpp::Time lastCommandTime_;
 
@@ -580,6 +994,15 @@ private:
 
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr
         emergencyStopSubscription_;
+
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr
+        mowerSafetyStopSubscription_;
+
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr
+        bladeEnabledSubscription_;
+
+    rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr
+        cutHeightSubscription_;
 
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr
         jointStatePublisher_;

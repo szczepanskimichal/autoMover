@@ -15,6 +15,22 @@
   <xacro:property name="wheel_x" value="0.45"/>
   <xacro:property name="wheel_y" value="0.48"/>
 
+  <xacro:property name="deck_radius" value="0.33"/>
+  <xacro:property name="deck_height" value="0.12"/>
+  <xacro:property name="deck_x" value="0.05"/>
+  <xacro:property name="deck_z" value="-0.17"/>
+
+  <xacro:property name="blade_radius" value="0.24"/>
+  <xacro:property name="blade_width" value="0.05"/>
+  <xacro:property name="blade_height" value="0.02"/>
+
+  <xacro:property name="lidar_mount_x" value="0.23"/>
+  <xacro:property name="lidar_mount_z" value="0.18"/>
+  <xacro:property name="lidar_mast_radius" value="0.03"/>
+  <xacro:property name="lidar_mast_height" value="0.16"/>
+  <xacro:property name="lidar_radius" value="0.075"/>
+  <xacro:property name="lidar_height" value="0.06"/>
+
   <!-- BASE FOOTPRINT -->
 
   <link name="base_footprint"/>
@@ -118,6 +134,81 @@
     </joint>
 
   </xacro:macro>
+
+  <link name="mower_deck_link">
+    <visual>
+      <geometry>
+        <cylinder radius="${deck_radius}" length="${deck_height}"/>
+      </geometry>
+      <material name="deck_red">
+        <color rgba="0.75 0.12 0.10 1"/>
+      </material>
+    </visual>
+
+    <collision>
+      <geometry>
+        <cylinder radius="${deck_radius}" length="${deck_height}"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="mower_deck_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="mower_deck_link"/>
+    <origin xyz="${deck_x} 0 ${deck_z}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="blade_link">
+    <visual>
+      <geometry>
+        <box size="${blade_radius * 2.0} ${blade_width} ${blade_height}"/>
+      </geometry>
+      <material name="blade_silver">
+        <color rgba="0.75 0.75 0.78 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="blade_joint" type="fixed">
+    <parent link="mower_deck_link"/>
+    <child link="blade_link"/>
+    <origin xyz="0 0 -0.02" rpy="0 0 0"/>
+  </joint>
+
+  <link name="lidar_mast_link">
+    <visual>
+      <origin xyz="0 0 ${lidar_mast_height * 0.5}" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="${lidar_mast_radius}" length="${lidar_mast_height}"/>
+      </geometry>
+      <material name="mast_black">
+        <color rgba="0.08 0.08 0.08 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="lidar_mast_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_mast_link"/>
+    <origin xyz="${lidar_mount_x} 0 ${lidar_mount_z}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="lidar_link">
+    <visual>
+      <geometry>
+        <cylinder radius="${lidar_radius}" length="${lidar_height}"/>
+      </geometry>
+      <material name="lidar_gold">
+        <color rgba="0.78 0.68 0.22 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="lidar_joint" type="fixed">
+    <parent link="lidar_mast_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0 0 ${lidar_mast_height + lidar_height * 0.5}" rpy="1.5708 0 0"/>
+  </joint>
 
   <!-- FOUR WHEELS -->
 
