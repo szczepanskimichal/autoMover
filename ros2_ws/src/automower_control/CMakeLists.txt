@@ -108,6 +108,7 @@ ament_target_dependencies(
 ament_target_dependencies(
   automower_tool_controller
   rclcpp
+  geometry_msgs
   std_msgs
 )
 

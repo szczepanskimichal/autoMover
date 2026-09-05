@@ -56,8 +56,8 @@ int main(int argc, char **argv)
   auto publisher = node->create_publisher<geometry_msgs::msg::Twist>(
       "/cmd_vel",
       10);
-    // Keep operator-facing mode and tool control in the same keyboard loop so a
-    // single teleop process can drive both the chassis and the winter attachment.
+  // Keep operator-facing mode and tool control in the same keyboard loop so a
+  // single teleop process can drive both the chassis and the winter attachment.
   auto workModePublisher = node->create_publisher<std_msgs::msg::String>(
       "/work_mode",
       10);
@@ -76,6 +76,24 @@ int main(int argc, char **argv)
   auto toolAnglePublisher = node->create_publisher<std_msgs::msg::Float32>(
       "/tool_angle",
       10);
+  auto engineEnabledPublisher = node->create_publisher<std_msgs::msg::Bool>(
+      "/engine_enabled",
+      10);
+  auto engineThrottlePublisher = node->create_publisher<std_msgs::msg::Float32>(
+      "/engine_throttle",
+      10);
+  auto augerEngagedPublisher = node->create_publisher<std_msgs::msg::Bool>(
+      "/auger_engaged",
+      10);
+  auto chutePositionPublisher = node->create_publisher<std_msgs::msg::Float32>(
+      "/chute_position",
+      10);
+  auto deflectorPositionPublisher = node->create_publisher<std_msgs::msg::Float32>(
+      "/deflector_position",
+      10);
+  auto simulateAugerOverloadPublisher = node->create_publisher<std_msgs::msg::Bool>(
+      "/simulate_auger_overload",
+      10);
 
   TerminalRawMode rawMode;
 
@@ -88,9 +106,12 @@ int main(int argc, char **argv)
       << "3: snow mode\n"
       << "b: blade profile\n"
       << "n: auger profile\n"
-      << "t: tool on/off\n"
-      << "r/f: tool power up/down\n"
-      << "g/h: tool angle left/right\n"
+      << "i: engine on/off\n"
+      << "t: auger clutch on/off\n"
+      << "r/f: engine throttle up/down\n"
+      << "g/h: chute left/right\n"
+      << "y/u: deflector down/up\n"
+      << "v: simulate auger overload\n"
       << "e: emergency stop toggle\n"
       << "x or space: stop\n"
       << "q: quit\n";
@@ -111,14 +132,32 @@ int main(int argc, char **argv)
   std_msgs::msg::Bool toolEnabled;
   toolEnabled.data = false;
 
+  std_msgs::msg::Bool engineEnabled;
+  engineEnabled.data = false;
+
+  std_msgs::msg::Bool augerEngaged;
+  augerEngaged.data = false;
+
   std_msgs::msg::Bool emergencyStop;
   emergencyStop.data = false;
 
   std_msgs::msg::Float32 toolPower;
   toolPower.data = 0.0F;
 
+  std_msgs::msg::Float32 engineThrottle;
+  engineThrottle.data = 0.0F;
+
   std_msgs::msg::Float32 toolAngle;
   toolAngle.data = 0.0F;
+
+  std_msgs::msg::Float32 chutePosition;
+  chutePosition.data = 0.0F;
+
+  std_msgs::msg::Float32 deflectorPosition;
+  deflectorPosition.data = 0.0F;
+
+  std_msgs::msg::Bool simulateAugerOverload;
+  simulateAugerOverload.data = false;
 
   rclcpp::WallRate loopRate(20.0);
 
@@ -146,9 +185,12 @@ int main(int argc, char **argv)
         << " angular.z=" << cmd.angular.z
         << " mode=" << workMode.data
         << " tool=" << toolProfile.data
-        << " tool_on=" << (toolEnabled.data ? "1" : "0")
-        << " power=" << toolPower.data
-        << " angle=" << toolAngle.data
+        << " engine=" << (engineEnabled.data ? "1" : "0")
+        << " throttle=" << engineThrottle.data
+        << " auger=" << (augerEngaged.data ? "1" : "0")
+        << " overload=" << (simulateAugerOverload.data ? "1" : "0")
+        << " chute=" << chutePosition.data
+        << " deflector=" << deflectorPosition.data
         << " estop=" << (emergencyStop.data ? "1" : "0")
         << "        "
         << std::flush;
@@ -164,6 +206,12 @@ int main(int argc, char **argv)
     toolEnabledPublisher->publish(toolEnabled);
     toolPowerPublisher->publish(toolPower);
     toolAnglePublisher->publish(toolAngle);
+    engineEnabledPublisher->publish(engineEnabled);
+    engineThrottlePublisher->publish(engineThrottle);
+    augerEngagedPublisher->publish(augerEngaged);
+    chutePositionPublisher->publish(chutePosition);
+    deflectorPositionPublisher->publish(deflectorPosition);
+    simulateAugerOverloadPublisher->publish(simulateAugerOverload);
   };
 
   printStatus(currentCmd);
@@ -275,31 +323,60 @@ int main(int argc, char **argv)
 
       case 't':
       case 'T':
-        toolEnabled.data = !toolEnabled.data;
+        augerEngaged.data = !augerEngaged.data;
+        toolEnabled.data = augerEngaged.data;
+        printStatus(currentCmd);
+        break;
+
+      case 'i':
+      case 'I':
+        engineEnabled.data = !engineEnabled.data;
         printStatus(currentCmd);
         break;
 
       case 'r':
       case 'R':
-        toolPower.data = static_cast<float>(clamp(toolPower.data + 0.1F, 1.0));
+        engineThrottle.data = static_cast<float>(clamp(engineThrottle.data + 0.1F, 1.0));
+        toolPower.data = engineThrottle.data;
         printStatus(currentCmd);
         break;
 
       case 'f':
       case 'F':
-        toolPower.data = static_cast<float>(clamp(toolPower.data - 0.1F, 1.0));
+        engineThrottle.data = static_cast<float>(clamp(engineThrottle.data - 0.1F, 1.0));
+        toolPower.data = engineThrottle.data;
         printStatus(currentCmd);
         break;
 
       case 'g':
       case 'G':
-        toolAngle.data = static_cast<float>(clamp(toolAngle.data - 0.1F, 1.0));
+        chutePosition.data = static_cast<float>(clamp(chutePosition.data - 0.1F, 1.0));
+        toolAngle.data = chutePosition.data;
         printStatus(currentCmd);
         break;
 
       case 'h':
       case 'H':
-        toolAngle.data = static_cast<float>(clamp(toolAngle.data + 0.1F, 1.0));
+        chutePosition.data = static_cast<float>(clamp(chutePosition.data + 0.1F, 1.0));
+        toolAngle.data = chutePosition.data;
+        printStatus(currentCmd);
+        break;
+
+      case 'y':
+      case 'Y':
+        deflectorPosition.data = static_cast<float>(clamp(deflectorPosition.data - 0.1F, 1.0));
+        printStatus(currentCmd);
+        break;
+
+      case 'u':
+      case 'U':
+        deflectorPosition.data = static_cast<float>(clamp(deflectorPosition.data + 0.1F, 1.0));
+        printStatus(currentCmd);
+        break;
+
+      case 'v':
+      case 'V':
+        simulateAugerOverload.data = !simulateAugerOverload.data;
         printStatus(currentCmd);
         break;
 
@@ -311,8 +388,14 @@ int main(int argc, char **argv)
           // Emergency stop clears motion and tool output immediately, while the
           // latched mode selection remains visible to the rest of the stack.
           currentCmd = stopCmd;
+          engineEnabled.data = false;
+          augerEngaged.data = false;
           toolEnabled.data = false;
+          engineThrottle.data = 0.0F;
           toolPower.data = 0.0F;
+          chutePosition.data = 0.0F;
+          toolAngle.data = 0.0F;
+          simulateAugerOverload.data = false;
         }
         printStatus(currentCmd);
         break;
@@ -326,8 +409,15 @@ int main(int argc, char **argv)
 
       case 'q':
       case 'Q':
+        currentCmd = stopCmd;
+        engineEnabled.data = false;
+        augerEngaged.data = false;
+        toolEnabled.data = false;
+        engineThrottle.data = 0.0F;
+        toolPower.data = 0.0F;
+        simulateAugerOverload.data = false;
         publisher->publish(stopCmd);
-        emergencyStopPublisher->publish(std_msgs::msg::Bool{});
+        publishOperatorState();
         std::cout << "\n";
         rclcpp::shutdown();
         return 0;

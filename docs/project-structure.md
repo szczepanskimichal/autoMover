@@ -80,7 +80,8 @@ The current teleop model is incremental:
 - `w` and `s` adjust forward speed
 - `a` and `d` adjust turn rate
 - `1`, `2`, `3` switch work mode between manual, mowing, and snow clearing
-- `b`, `n`, `t`, `r`, `f`, `g`, `h` manage tool profile, power, and angle
+- `b` and `n` select the tool profile
+- `i`, `t`, `r`, `f`, `g`, `h`, `y`, `u`, and `v` act as a hybrid operator console for engine, auger, chute, deflector, and overload testing
 - `e` toggles emergency stop
 - `x` or `space` resets motion to zero
 

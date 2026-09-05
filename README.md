@@ -120,9 +120,12 @@ The teleop is incremental rather than hold-based:
 - `a` and `d` increase or decrease turn rate
 - `1`, `2`, `3` switch between `manual_drive`, `mowing`, and `snow_clearing`
 - `b` and `n` switch between `blade` and `auger`
-- `t` toggles the tool on and off
-- `r` and `f` increase or decrease tool power
-- `g` and `h` adjust tool angle
+- `i` toggles the engine state
+- `t` toggles auger engagement
+- `r` and `f` increase or decrease engine throttle demand
+- `g` and `h` rotate the chute left and right
+- `y` and `u` adjust the deflector down and up
+- `v` simulates auger overload for testing
 - `e` toggles emergency stop
 - `x` or `space` stops the mower
 - `q` quits teleop
@@ -130,6 +133,11 @@ The teleop is incremental rather than hold-based:
 In `snow_clearing`, the drive node automatically applies a slower safety
 profile so the same keyboard inputs produce gentler motion and lower turn
 aggression than in summer-oriented modes.
+
+The teleop still publishes the generic tool topics for compatibility, but the
+current winter-oriented control path now also publishes hybrid-specific
+commands for engine state, auger engagement, chute position, deflector position,
+and overload simulation.
 
 Experimental joystick path:
 
@@ -175,6 +183,9 @@ The most important runtime interfaces are:
 - `/tf` and `/tf_static` for transforms
 - `/visualization_marker_array` for the simple mower body visualization
 - `/robot_description` for the URDF model
+- `/engine_enabled`, `/engine_throttle`, and `/auger_engaged` for the hybrid winter attachment model
+- `/hybrid/engine_rpm`, `/hybrid/battery_voltage`, `/hybrid/battery_soc`, and `/hybrid/dc_bus_current` for simulated power-train telemetry
+- `/hybrid/auger_rpm`, `/hybrid/auger_overload`, `/hybrid/chute_position`, and `/hybrid/deflector_position` for mechanical auger state
 
 The main frame chain is:
 
@@ -195,4 +206,5 @@ odom -> base_footprint -> base_link -> wheel links
 - [docs/project-structure.md](docs/project-structure.md)
 - [docs/diagrams.md](docs/diagrams.md)
 - [docs/learning-guide.md](docs/learning-guide.md)
+- [docs/hybrid-snowblower-plan.md](docs/hybrid-snowblower-plan.md)
 - [docs/visualization.md](docs/visualization.md)
