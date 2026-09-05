@@ -42,5 +42,5 @@ echo "Foxglove bridge will listen on ws://localhost:${port}"
 docker exec -it "$container_name" /bin/bash -lc '
   source /opt/ros/jazzy/setup.bash
   source /automower/ros2_ws/install/setup.bash
-  ros2 launch foxglove_bridge foxglove_bridge_launch.xml port:=8765 address:=0.0.0.0
+  ros2 launch /opt/ros/jazzy/share/foxglove_bridge/launch/foxglove_bridge_launch.xml port:=8765 address:=0.0.0.0
 '

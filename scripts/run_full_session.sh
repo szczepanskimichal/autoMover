@@ -71,14 +71,46 @@ docker exec -d "$container_name" /bin/bash -lc '
 docker exec -d -e BRIDGE_PORT="$bridge_port" "$container_name" /bin/bash -lc '
   source /opt/ros/jazzy/setup.bash
   source /automower/ros2_ws/install/setup.bash
-  exec ros2 launch foxglove_bridge foxglove_bridge_launch.xml port:=${BRIDGE_PORT} address:=0.0.0.0 >/config/automower_logs/foxglove_bridge.log 2>&1
+  exec ros2 launch /opt/ros/jazzy/share/foxglove_bridge/launch/foxglove_bridge_launch.xml port:=${BRIDGE_PORT} address:=0.0.0.0 >/config/automower_logs/foxglove_bridge.log 2>&1
 '
 
 docker exec -d -e ROSBRIDGE_PORT="$rosbridge_port" "$container_name" /bin/bash -lc '
   source /opt/ros/jazzy/setup.bash
   source /automower/ros2_ws/install/setup.bash
-  exec ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:=${ROSBRIDGE_PORT} address:=0.0.0.0 >/config/automower_logs/rosbridge.log 2>&1
+  exec ros2 launch /opt/ros/jazzy/share/rosbridge_server/launch/rosbridge_websocket_launch.xml port:=${ROSBRIDGE_PORT} address:=0.0.0.0 >/config/automower_logs/rosbridge.log 2>&1
 '
+
+docker exec "$container_name" /bin/bash -lc '
+  python3 - <<"PY"
+import socket
+import time
+
+ports = (8765, 9090)
+deadline = time.monotonic() + 5.0
+
+while time.monotonic() < deadline:
+    if all(socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect_ex(("127.0.0.1", port)) == 0 for port in ports):
+        raise SystemExit(0)
+    time.sleep(0.25)
+
+for port in ports:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(0.2)
+    result = sock.connect_ex(("127.0.0.1", port))
+    sock.close()
+    if result != 0:
+        raise SystemExit(port)
+
+raise SystemExit(0)
+PY
+' || {
+  echo "failed to start websocket bridges" >&2
+  echo "foxglove log:" >&2
+  docker exec "$container_name" /bin/bash -lc 'tail -n 40 /config/automower_logs/foxglove_bridge.log' >&2 || true
+  echo "rosbridge log:" >&2
+  docker exec "$container_name" /bin/bash -lc 'tail -n 40 /config/automower_logs/rosbridge.log' >&2 || true
+  exit 1
+}
 
 cat <<EOF
 session is up
