@@ -43,6 +43,7 @@ int main()
     std::cout << "X   = stop\n";
     std::cout << "Q   = quit\n\n";
 
+    // This loop is the smallest end-to-end demo of the motion model.
     while (true)
     {
         char command;
