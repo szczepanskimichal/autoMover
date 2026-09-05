@@ -2,6 +2,11 @@
 
 `autoMower` is a small robotics learning project that combines a simple C++ drive model with a ROS 2 visualization and teleoperation stack running in Docker.
 
+Current development focus:
+
+- the mower learning path is the active track again
+- the hybrid snowblower work stays in the repository as a documented reference, but it is currently parked until the budget and hardware plan are clearer
+
 The repository currently has two layers:
 
 - a root C++ prototype that contains the reusable drive logic
@@ -214,3 +219,6 @@ odom -> base_footprint -> base_link -> wheel links
 - [docs/learning-guide.md](docs/learning-guide.md)
 - [docs/hybrid-snowblower-plan.md](docs/hybrid-snowblower-plan.md)
 - [docs/visualization.md](docs/visualization.md)
+
+If you continue active implementation work now, treat the mower path as the
+primary scope and the hybrid snowblower notes as parked design material.

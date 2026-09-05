@@ -1,5 +1,11 @@
 # Hybrid Snowblower Plan
 
+Status note:
+
+- this path is currently paused
+- keep this document as design reference and future planning material
+- active implementation focus has moved back to the mower branch until the hardware budget and final snowblower direction are better defined
+
 This document turns the current idea into a practical first hardware plan.
 
 The target is not a full battery-electric snowblower.
