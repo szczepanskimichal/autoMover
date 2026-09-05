@@ -17,14 +17,13 @@
 #include "tf2_ros/transform_broadcaster.h"
 
 #include "DriveController.h"
-#include "SimulationDriver.h"
 
 class AutoMowerDriveNode : public rclcpp::Node
 {
 public:
     AutoMowerDriveNode()
         : Node("automower_drive_node"),
-                    currentSpeeds_{0.0, 0.0, 0.0, 0.0},
+          currentSpeeds_{0.0, 0.0, 0.0, 0.0},
           frontLeftPosition_(0.0),
           frontRightPosition_(0.0),
           rearLeftPosition_(0.0),
@@ -118,6 +117,8 @@ private:
         hasLastCommandTime_ = true;
         lastCommandTime_ = this->now();
 
+        // Cache the latest requested motion. The fixed-rate state loop below
+        // consumes it so integration stays smooth even if key events are bursty.
         currentSpeeds_ =
             driveController_.calculate(
                 msg->linear.x,
@@ -136,6 +137,8 @@ private:
 
         WheelSpeeds speeds = currentSpeeds_;
 
+        // If teleop stops publishing, decay immediately to a stationary target
+        // so odometry and TF remain valid without runaway motion.
         if (!hasLastCommandTime_ ||
             (currentTime - lastCommandTime_).seconds() >= CMD_VEL_TIMEOUT)
         {
@@ -158,8 +161,6 @@ private:
                 speeds,
                 dt);
         }
-
-        simulationDriver_.apply(speeds);
 
         publishJointStates(
             speeds,
@@ -360,6 +361,8 @@ private:
         visualization_msgs::msg::MarkerArray markers;
         const auto stamp = this->now();
 
+        // Markers provide the fastest visible body in Foxglove even without a
+        // dedicated URDF layer configuration.
         markers.markers.push_back(
             makeBodyMarker(stamp));
 
@@ -447,7 +450,6 @@ private:
     }
 
     DriveController driveController_;
-    SimulationDriver simulationDriver_;
 
     WheelSpeeds currentSpeeds_;
 

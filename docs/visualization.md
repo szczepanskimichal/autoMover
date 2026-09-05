@@ -149,24 +149,25 @@ Recommended helper panels for learning the scene:
 
 ### 6. Drive the mower
 
-Use your existing teleop flow in another shell inside the container:
+Use the teleop wrapper from another terminal on the host:
 
 ```bash
 ./scripts/run_wasd_teleop.sh
 ```
 
-Key mapping in the host teleop:
+Key mapping in the current teleop:
 
-- `w` forward
-- `s` backward
-- `a` turn left
-- `d` turn right
-- `space` stop
+- `w` increase forward speed
+- `s` increase reverse speed or reduce forward speed
+- `a` increase left turn rate
+- `d` increase right turn rate
+- `x` or `space` stop
 - `q` quit
 
-Keep the keyboard focus in the terminal running the teleop. Foxglove uses many
-of the same keys for camera control, so driving from the terminal is more
-reliable than driving from inside the 3D panel.
+The teleop keeps publishing the current target command until you change it or
+stop it. Keep the keyboard focus in the terminal running the teleop. Foxglove
+uses many of the same keys for camera control, so driving from the terminal is
+more reliable than driving from inside the 3D panel.
 
 ## What you should see
 

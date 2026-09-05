@@ -17,7 +17,13 @@ if ! docker ps --format '{{.Names}}' | grep -Fxq "$container_name"; then
   exit 1
 fi
 
-exec docker exec -it "$container_name" /bin/bash -lc '
+cleanup() {
+  stty sane >/dev/null 2>&1 || true
+}
+
+trap cleanup EXIT INT TERM
+
+docker exec -it "$container_name" /bin/bash -lc '
   source /opt/ros/jazzy/setup.bash
   source /automower/ros2_ws/install/setup.bash
   exec ros2 run automower_control automower_wasd_teleop

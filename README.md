@@ -46,13 +46,13 @@ The `automower_drive_node` in `ros2_ws/src/automower_control` is responsible for
 
 - subscribing to `/cmd_vel`
 - converting commands into wheel speeds with `DriveController`
-- updating wheel angles and a simple odometry estimate
+- updating wheel angles and a simple odometry estimate on a fixed-rate timer
 - publishing `/joint_states`
 - publishing `/odom`
 - broadcasting `odom -> base_footprint`
 - publishing a marker-based mower body to `/visualization_marker_array`
 
-The node also publishes an idle state on a timer, which keeps the `odom` frame alive even when no teleop command is being sent. That is important for Foxglove because the 3D panel needs a stable fixed frame.
+The node keeps its motion state on a fixed update loop and falls back to zero wheel speed when teleop input times out. That keeps the `odom` frame alive even when no fresh command is being sent, which matters for Foxglove because the 3D panel needs a stable fixed frame.
 
 ### 3. Robot description
 
@@ -95,6 +95,13 @@ If the container was created before Foxglove port publishing was added:
 ./scripts/run_wasd_teleop.sh
 ```
 
+The teleop is incremental rather than hold-based:
+
+- `w` and `s` increase or decrease forward speed
+- `a` and `d` increase or decrease turn rate
+- `x` or `space` stops the mower
+- `q` quits teleop
+
 ### Manual step-by-step workflow
 
 ```bash
@@ -127,6 +134,7 @@ odom -> base_footprint -> base_link -> wheel links
 - `scripts/` is the fastest place to understand how the host machine, Docker container, ROS launch files, and Foxglove are connected.
 - `include/` and `src/` contain the simplest version of the drive model and are a good starting point if you want to learn the core logic first.
 - `ros2_ws/src/automower_control/src/automower_drive_node.cpp` is the best file to read when you want to understand the full runtime data flow.
+- `ros2_ws/src/automower_control/src/automower_wasd_teleop.cpp` is the best file to read when you want to understand how keyboard input becomes a stable `/cmd_vel` stream.
 
 ## Additional Documentation
 

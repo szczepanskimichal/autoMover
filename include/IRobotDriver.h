@@ -8,5 +8,5 @@ class IRobotDriver
 public:
     virtual ~IRobotDriver() = default;
 
-    virtual void apply(const WheelSpeeds& speeds) = 0;
+    virtual void apply(const WheelSpeeds &speeds) = 0;
 };

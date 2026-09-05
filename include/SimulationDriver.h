@@ -6,5 +6,5 @@
 class SimulationDriver : public IRobotDriver
 {
 public:
-    void apply(const WheelSpeeds& speeds) override;
+    void apply(const WheelSpeeds &speeds) override;
 };

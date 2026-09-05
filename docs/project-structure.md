@@ -56,6 +56,7 @@ It:
 
 - subscribes to `/cmd_vel`
 - computes wheel commands from incoming velocity requests
+- runs a fixed-rate state update loop
 - updates wheel joint positions
 - integrates a simple odometry estimate
 - publishes `/joint_states`
@@ -72,7 +73,15 @@ There are two useful mental models when reading this file:
 
 This is the ROS-native teleop executable.
 
-It runs a small keyboard loop, publishes `geometry_msgs/msg/Twist` on `/cmd_vel`, and sends a stop command when input times out.
+It runs a small keyboard loop and continuously publishes `geometry_msgs/msg/Twist` on `/cmd_vel`.
+
+The current teleop model is incremental:
+
+- `w` and `s` adjust forward speed
+- `a` and `d` adjust turn rate
+- `x` or `space` resets motion to zero
+
+That makes the host-side wrapper simpler and avoids the jerky one-shot command pattern from the earlier shell version.
 
 ### `ros2_ws/src/automower_description`
 
@@ -120,7 +129,7 @@ Wraps the full development workflow into one command.
 
 ### `scripts/run_wasd_teleop.sh`
 
-Publishes short `/cmd_vel` commands from host keyboard input.
+Starts the ROS-native teleop executable inside the running container.
 
 ## Suggested Reading Order
 

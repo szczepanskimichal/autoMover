@@ -12,16 +12,16 @@ int main()
     const int timeStep =
         static_cast<int>(robot.getBasicTimeStep());
 
-    Motor* frontLeft =
+    Motor *frontLeft =
         robot.getMotor("front_left_motor");
 
-    Motor* frontRight =
+    Motor *frontRight =
         robot.getMotor("front_right_motor");
 
-    Motor* rearLeft =
+    Motor *rearLeft =
         robot.getMotor("rear_left_motor");
 
-    Motor* rearRight =
+    Motor *rearRight =
         robot.getMotor("rear_right_motor");
 
     // Infinite position switches each wheel motor into velocity-control mode.

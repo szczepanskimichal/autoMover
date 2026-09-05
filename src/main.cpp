@@ -51,46 +51,50 @@ int main()
 
         switch (command)
         {
-            case 'w':
-            case 'W':
-                throttle += 0.1;
-                break;
+        case 'w':
+        case 'W':
+            throttle += 0.1;
+            break;
 
-            case 's':
-            case 'S':
-                throttle -= 0.1;
-                break;
+        case 's':
+        case 'S':
+            throttle -= 0.1;
+            break;
 
-            case 'a':
-            case 'A':
-                steering -= 0.1;
-                break;
+        case 'a':
+        case 'A':
+            steering -= 0.1;
+            break;
 
-            case 'd':
-            case 'D':
-                steering += 0.1;
-                break;
+        case 'd':
+        case 'D':
+            steering += 0.1;
+            break;
 
-            case 'x':
-            case 'X':
-                throttle = 0.0;
-                steering = 0.0;
-                break;
+        case 'x':
+        case 'X':
+            throttle = 0.0;
+            steering = 0.0;
+            break;
 
-            case 'q':
-            case 'Q':
-                std::cout << "\nStopping autoMower.\n";
-                return 0;
+        case 'q':
+        case 'Q':
+            std::cout << "\nStopping autoMower.\n";
+            return 0;
 
-            default:
-                continue;
+        default:
+            continue;
         }
 
-        if (throttle > 1.0) throttle = 1.0;
-        if (throttle < -1.0) throttle = -1.0;
+        if (throttle > 1.0)
+            throttle = 1.0;
+        if (throttle < -1.0)
+            throttle = -1.0;
 
-        if (steering > 1.0) steering = 1.0;
-        if (steering < -1.0) steering = -1.0;
+        if (steering > 1.0)
+            steering = 1.0;
+        if (steering < -1.0)
+            steering = -1.0;
 
         const WheelSpeeds wheels =
             controller.calculate(throttle, steering);

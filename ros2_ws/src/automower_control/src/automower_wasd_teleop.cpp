@@ -58,21 +58,49 @@ int main(int argc, char **argv)
 
   std::cout
       << "WASD teleop\n"
-      << "w: forward\n"
-      << "s: backward\n"
-      << "a: turn left\n"
-      << "d: turn right\n"
-      << "hold key: keep moving\n"
-      << "space: stop\n"
+      << "w/s: increase/decrease forward speed\n"
+      << "a/d: increase/decrease turn rate\n"
+      << "x or space: stop\n"
       << "q: quit\n";
+
+  constexpr double linearStep = 0.12;
+  constexpr double angularStep = 0.2;
+  constexpr double maxLinearSpeed = 0.35;
+  constexpr double maxAngularSpeed = 0.5;
 
   geometry_msgs::msg::Twist currentCmd;
   geometry_msgs::msg::Twist stopCmd;
-  auto lastMotionInput = std::chrono::steady_clock::now();
-  bool publishStopOnce = true;
   rclcpp::WallRate loopRate(20.0);
 
-  // Keep publishing while a key is held, then send one clean stop on timeout.
+  // Keep command tuning local and readable instead of spreading literals across
+  // the key handling branches.
+  auto clamp = [](double value, double limit)
+  {
+    if (value > limit)
+    {
+      return limit;
+    }
+
+    if (value < -limit)
+    {
+      return -limit;
+    }
+
+    return value;
+  };
+
+  auto printStatus = [&](const geometry_msgs::msg::Twist &cmd)
+  {
+    std::cout
+        << "\rlinear.x=" << cmd.linear.x
+        << " angular.z=" << cmd.angular.z
+        << "        "
+        << std::flush;
+  };
+
+  printStatus(currentCmd);
+
+  // Keep publishing the current target command until the operator changes it.
   while (rclcpp::ok())
   {
     fd_set readSet;
@@ -106,45 +134,55 @@ int main(int argc, char **argv)
       {
       case 'w':
       case 'W':
-        nextCmd.linear.x = 0.6;
+        nextCmd = currentCmd;
+        nextCmd.linear.x = clamp(
+            currentCmd.linear.x + linearStep,
+            maxLinearSpeed);
         currentCmd = nextCmd;
-        lastMotionInput = std::chrono::steady_clock::now();
-        publishStopOnce = false;
+        printStatus(currentCmd);
         break;
 
       case 's':
       case 'S':
-        nextCmd.linear.x = -0.6;
+        nextCmd = currentCmd;
+        nextCmd.linear.x = clamp(
+            currentCmd.linear.x - linearStep,
+            maxLinearSpeed);
         currentCmd = nextCmd;
-        lastMotionInput = std::chrono::steady_clock::now();
-        publishStopOnce = false;
+        printStatus(currentCmd);
         break;
 
       case 'a':
       case 'A':
-        nextCmd.angular.z = 0.8;
+        nextCmd = currentCmd;
+        nextCmd.angular.z = clamp(
+            currentCmd.angular.z + angularStep,
+            maxAngularSpeed);
         currentCmd = nextCmd;
-        lastMotionInput = std::chrono::steady_clock::now();
-        publishStopOnce = false;
+        printStatus(currentCmd);
         break;
 
       case 'd':
       case 'D':
-        nextCmd.angular.z = -0.8;
+        nextCmd = currentCmd;
+        nextCmd.angular.z = clamp(
+            currentCmd.angular.z - angularStep,
+            maxAngularSpeed);
         currentCmd = nextCmd;
-        lastMotionInput = std::chrono::steady_clock::now();
-        publishStopOnce = false;
+        printStatus(currentCmd);
         break;
 
+      case 'x':
+      case 'X':
       case ' ':
         currentCmd = stopCmd;
-        publisher->publish(currentCmd);
-        publishStopOnce = true;
+        printStatus(currentCmd);
         break;
 
       case 'q':
       case 'Q':
         publisher->publish(stopCmd);
+        std::cout << "\n";
         rclcpp::shutdown();
         return 0;
 
@@ -159,23 +197,7 @@ int main(int argc, char **argv)
       }
     }
 
-    const auto now = std::chrono::steady_clock::now();
-    const bool motionTimedOut =
-        now - lastMotionInput > 250ms;
-
-    if (motionTimedOut)
-    {
-      if (!publishStopOnce)
-      {
-        currentCmd = stopCmd;
-        publisher->publish(currentCmd);
-        publishStopOnce = true;
-      }
-    }
-    else
-    {
-      publisher->publish(currentCmd);
-    }
+    publisher->publish(currentCmd);
 
     loopRate.sleep();
   }
