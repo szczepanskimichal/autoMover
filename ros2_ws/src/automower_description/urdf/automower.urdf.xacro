@@ -1,0 +1,144 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro"
+       name="automower">
+
+  <!-- Dimensions -->
+
+  <xacro:property name="body_length" value="1.2"/>
+  <xacro:property name="body_width"  value="0.8"/>
+  <xacro:property name="body_height" value="0.2"/>
+
+  <xacro:property name="wheel_radius" value="0.18"/>
+  <xacro:property name="wheel_width"  value="0.12"/>
+
+  <xacro:property name="wheel_x" value="0.45"/>
+  <xacro:property name="wheel_y" value="0.48"/>
+
+  <!-- BASE FOOTPRINT -->
+
+  <link name="base_footprint"/>
+
+  <joint name="base_footprint_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <!-- Lift the visual body above the ground-aligned footprint frame. -->
+    <origin xyz="0 0 0.28" rpy="0 0 0"/>
+  </joint>
+
+  <!-- BODY -->
+
+  <link name="base_link">
+
+    <visual>
+      <geometry>
+        <box size="${body_length} ${body_width} ${body_height}"/>
+      </geometry>
+
+      <material name="green">
+        <color rgba="0.1 0.35 0.1 1"/>
+      </material>
+    </visual>
+
+    <collision>
+      <geometry>
+        <box size="${body_length} ${body_width} ${body_height}"/>
+      </geometry>
+    </collision>
+
+    <inertial>
+      <mass value="25.0"/>
+      <origin xyz="0 0 0"/>
+
+      <inertia
+        ixx="1.4167"
+        ixy="0"
+        ixz="0"
+        iyy="3.0833"
+        iyz="0"
+        izz="4.3333"/>
+    </inertial>
+
+  </link>
+
+  <!-- Wheel macro -->
+
+  <xacro:macro name="wheel" params="name x y">
+
+    <link name="${name}_wheel">
+
+      <visual>
+        <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+
+        <geometry>
+          <cylinder
+            radius="${wheel_radius}"
+            length="${wheel_width}"/>
+        </geometry>
+
+        <material name="black">
+          <color rgba="0.03 0.03 0.03 1"/>
+        </material>
+      </visual>
+
+      <collision>
+        <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+
+        <geometry>
+          <cylinder
+            radius="${wheel_radius}"
+            length="${wheel_width}"/>
+        </geometry>
+      </collision>
+
+      <inertial>
+        <mass value="2.0"/>
+        <origin xyz="0 0 0"/>
+
+        <inertia
+          ixx="0.018"
+          ixy="0"
+          ixz="0"
+          iyy="0.0324"
+          iyz="0"
+          izz="0.018"/>
+      </inertial>
+
+    </link>
+
+    <joint name="${name}_wheel_joint" type="continuous">
+
+      <parent link="base_link"/>
+      <child link="${name}_wheel"/>
+
+      <origin xyz="${x} ${y} 0" rpy="0 0 0"/>
+
+      <axis xyz="0 1 0"/>
+
+    </joint>
+
+  </xacro:macro>
+
+  <!-- FOUR WHEELS -->
+
+  <xacro:wheel
+    name="front_left"
+    x="${wheel_x}"
+    y="${wheel_y}"/>
+
+  <xacro:wheel
+    name="front_right"
+    x="${wheel_x}"
+    y="${-wheel_y}"/>
+
+  <xacro:wheel
+    name="rear_left"
+    x="${-wheel_x}"
+    y="${wheel_y}"/>
+
+  <xacro:wheel
+    name="rear_right"
+    x="${-wheel_x}"
+    y="${-wheel_y}"/>
+
+</robot>
