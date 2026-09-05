@@ -1,3 +1,0 @@
-/Users/michalszczepanski/ROBOTICS/KOSIARKA/autoMower/autoMower/build/CMakeFiles/autoMower.dir
-/Users/michalszczepanski/ROBOTICS/KOSIARKA/autoMower/autoMower/build/CMakeFiles/edit_cache.dir
-/Users/michalszczepanski/ROBOTICS/KOSIARKA/autoMower/autoMower/build/CMakeFiles/rebuild_cache.dir
