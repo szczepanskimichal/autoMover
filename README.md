@@ -139,4 +139,5 @@ odom -> base_footprint -> base_link -> wheel links
 ## Additional Documentation
 
 - [docs/project-structure.md](docs/project-structure.md)
+- [docs/learning-guide.md](docs/learning-guide.md)
 - [docs/visualization.md](docs/visualization.md)
