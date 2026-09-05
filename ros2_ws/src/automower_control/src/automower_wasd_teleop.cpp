@@ -8,6 +8,9 @@
 
 #include "geometry_msgs/msg/twist.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/bool.hpp"
+#include "std_msgs/msg/float32.hpp"
+#include "std_msgs/msg/string.hpp"
 
 class TerminalRawMode
 {
@@ -53,6 +56,26 @@ int main(int argc, char **argv)
   auto publisher = node->create_publisher<geometry_msgs::msg::Twist>(
       "/cmd_vel",
       10);
+    // Keep operator-facing mode and tool control in the same keyboard loop so a
+    // single teleop process can drive both the chassis and the winter attachment.
+  auto workModePublisher = node->create_publisher<std_msgs::msg::String>(
+      "/work_mode",
+      10);
+  auto emergencyStopPublisher = node->create_publisher<std_msgs::msg::Bool>(
+      "/emergency_stop",
+      10);
+  auto toolProfilePublisher = node->create_publisher<std_msgs::msg::String>(
+      "/tool_profile",
+      10);
+  auto toolEnabledPublisher = node->create_publisher<std_msgs::msg::Bool>(
+      "/tool_enabled",
+      10);
+  auto toolPowerPublisher = node->create_publisher<std_msgs::msg::Float32>(
+      "/tool_power",
+      10);
+  auto toolAnglePublisher = node->create_publisher<std_msgs::msg::Float32>(
+      "/tool_angle",
+      10);
 
   TerminalRawMode rawMode;
 
@@ -60,6 +83,15 @@ int main(int argc, char **argv)
       << "WASD teleop\n"
       << "w/s: increase/decrease forward speed\n"
       << "a/d: increase/decrease turn rate\n"
+      << "1: manual mode\n"
+      << "2: mowing mode\n"
+      << "3: snow mode\n"
+      << "b: blade profile\n"
+      << "n: auger profile\n"
+      << "t: tool on/off\n"
+      << "r/f: tool power up/down\n"
+      << "g/h: tool angle left/right\n"
+      << "e: emergency stop toggle\n"
       << "x or space: stop\n"
       << "q: quit\n";
 
@@ -70,6 +102,24 @@ int main(int argc, char **argv)
 
   geometry_msgs::msg::Twist currentCmd;
   geometry_msgs::msg::Twist stopCmd;
+  std_msgs::msg::String workMode;
+  workMode.data = "manual_drive";
+
+  std_msgs::msg::String toolProfile;
+  toolProfile.data = "auger";
+
+  std_msgs::msg::Bool toolEnabled;
+  toolEnabled.data = false;
+
+  std_msgs::msg::Bool emergencyStop;
+  emergencyStop.data = false;
+
+  std_msgs::msg::Float32 toolPower;
+  toolPower.data = 0.0F;
+
+  std_msgs::msg::Float32 toolAngle;
+  toolAngle.data = 0.0F;
+
   rclcpp::WallRate loopRate(20.0);
 
   // Keep command tuning local and readable instead of spreading literals across
@@ -94,11 +144,30 @@ int main(int argc, char **argv)
     std::cout
         << "\rlinear.x=" << cmd.linear.x
         << " angular.z=" << cmd.angular.z
+        << " mode=" << workMode.data
+        << " tool=" << toolProfile.data
+        << " tool_on=" << (toolEnabled.data ? "1" : "0")
+        << " power=" << toolPower.data
+        << " angle=" << toolAngle.data
+        << " estop=" << (emergencyStop.data ? "1" : "0")
         << "        "
         << std::flush;
   };
 
+  auto publishOperatorState = [&]()
+  {
+    // Publish every loop so late subscribers still converge to the current
+    // operator state without needing a dedicated latched command layer.
+    workModePublisher->publish(workMode);
+    emergencyStopPublisher->publish(emergencyStop);
+    toolProfilePublisher->publish(toolProfile);
+    toolEnabledPublisher->publish(toolEnabled);
+    toolPowerPublisher->publish(toolPower);
+    toolAnglePublisher->publish(toolAngle);
+  };
+
   printStatus(currentCmd);
+  publishOperatorState();
 
   // Keep publishing the current target command until the operator changes it.
   while (rclcpp::ok())
@@ -172,6 +241,82 @@ int main(int argc, char **argv)
         printStatus(currentCmd);
         break;
 
+      case '1':
+        // Manual mode leaves the chassis free while keeping the current tool
+        // selection available for later arming.
+        workMode.data = "manual_drive";
+        printStatus(currentCmd);
+        break;
+
+      case '2':
+        workMode.data = "mowing";
+        printStatus(currentCmd);
+        break;
+
+      case '3':
+        // Snow mode defaults back to the auger profile so winter sessions start
+        // from the attachment we currently care about most.
+        workMode.data = "snow_clearing";
+        toolProfile.data = "auger";
+        printStatus(currentCmd);
+        break;
+
+      case 'b':
+      case 'B':
+        toolProfile.data = "blade";
+        printStatus(currentCmd);
+        break;
+
+      case 'n':
+      case 'N':
+        toolProfile.data = "auger";
+        printStatus(currentCmd);
+        break;
+
+      case 't':
+      case 'T':
+        toolEnabled.data = !toolEnabled.data;
+        printStatus(currentCmd);
+        break;
+
+      case 'r':
+      case 'R':
+        toolPower.data = static_cast<float>(clamp(toolPower.data + 0.1F, 1.0));
+        printStatus(currentCmd);
+        break;
+
+      case 'f':
+      case 'F':
+        toolPower.data = static_cast<float>(clamp(toolPower.data - 0.1F, 1.0));
+        printStatus(currentCmd);
+        break;
+
+      case 'g':
+      case 'G':
+        toolAngle.data = static_cast<float>(clamp(toolAngle.data - 0.1F, 1.0));
+        printStatus(currentCmd);
+        break;
+
+      case 'h':
+      case 'H':
+        toolAngle.data = static_cast<float>(clamp(toolAngle.data + 0.1F, 1.0));
+        printStatus(currentCmd);
+        break;
+
+      case 'e':
+      case 'E':
+        emergencyStop.data = !emergencyStop.data;
+        if (emergencyStop.data)
+        {
+          // Emergency stop clears motion and tool output immediately, while the
+          // latched mode selection remains visible to the rest of the stack.
+          currentCmd = stopCmd;
+          toolEnabled.data = false;
+          toolPower.data = 0.0F;
+        }
+        printStatus(currentCmd);
+        break;
+
       case 'x':
       case 'X':
       case ' ':
@@ -182,6 +327,7 @@ int main(int argc, char **argv)
       case 'q':
       case 'Q':
         publisher->publish(stopCmd);
+        emergencyStopPublisher->publish(std_msgs::msg::Bool{});
         std::cout << "\n";
         rclcpp::shutdown();
         return 0;
@@ -198,6 +344,7 @@ int main(int argc, char **argv)
     }
 
     publisher->publish(currentCmd);
+    publishOperatorState();
 
     loopRate.sleep();
   }

@@ -145,6 +145,10 @@ This file controls:
 
 If you want to affect physical behavior over time, this is the most important file in the repo.
 
+One recent example is the winter safety profile: the node now scales motion down
+when `work_mode` is `snow_clearing`, so safety lives in the runtime controller
+instead of depending only on careful keyboard use.
+
 ### `ros2_ws/src/automower_control/src/automower_tool_controller.cpp`
 
 This file is the current placeholder for the working tool.
@@ -217,6 +221,20 @@ These functions do not decide behavior.
 They expose already computed behavior.
 
 ### 4. Configuration role
+
+Functions:
+
+- `workModeCallback`
+- `emergencyStopCallback`
+- `driveAllowedInCurrentMode`
+- `applyDriveSafetyProfile`
+
+Question to ask:
+What higher-level operating rules are shaping the motion before the odometry
+math even runs?
+
+This is where seasonal behavior, safety constraints, and future task-specific
+profiles belong.
 
 Look at the constants near the top of the class.
 

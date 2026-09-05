@@ -95,6 +95,7 @@ ament_target_dependencies(
   automower_wasd_teleop
   rclcpp
   geometry_msgs
+  std_msgs
 )
 
 ament_target_dependencies(

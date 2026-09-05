@@ -118,8 +118,18 @@ The teleop is incremental rather than hold-based:
 
 - `w` and `s` increase or decrease forward speed
 - `a` and `d` increase or decrease turn rate
+- `1`, `2`, `3` switch between `manual_drive`, `mowing`, and `snow_clearing`
+- `b` and `n` switch between `blade` and `auger`
+- `t` toggles the tool on and off
+- `r` and `f` increase or decrease tool power
+- `g` and `h` adjust tool angle
+- `e` toggles emergency stop
 - `x` or `space` stops the mower
 - `q` quits teleop
+
+In `snow_clearing`, the drive node automatically applies a slower safety
+profile so the same keyboard inputs produce gentler motion and lower turn
+aggression than in summer-oriented modes.
 
 Experimental joystick path:
 

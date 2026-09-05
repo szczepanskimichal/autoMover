@@ -128,6 +128,10 @@ private:
 
     static constexpr double CMD_VEL_TIMEOUT = 0.25;
 
+    static constexpr double SNOW_LINEAR_SCALE = 0.45;
+
+    static constexpr double SNOW_ANGULAR_SCALE = 0.65;
+
     // Na razie WheelSpeeds są komendą -1..1.
     // Przyjmujemy, że 1.0 = 1 m/s prędkości liniowej koła.
     static constexpr double MAX_WHEEL_LINEAR_SPEED = 1.0;
@@ -192,6 +196,22 @@ private:
                workMode_ == "snow_clearing";
     }
 
+    WheelSpeeds applyDriveSafetyProfile(
+        const WheelSpeeds &speeds) const
+    {
+        if (workMode_ != "snow_clearing")
+        {
+            return speeds;
+        }
+
+        // Snow mode trades speed for traction and operator reaction time.
+        return WheelSpeeds{
+            speeds.frontLeft * SNOW_LINEAR_SCALE,
+            speeds.frontRight * SNOW_LINEAR_SCALE,
+            speeds.rearLeft * SNOW_LINEAR_SCALE,
+            speeds.rearRight * SNOW_LINEAR_SCALE};
+    }
+
     void publishState()
     {
         const auto currentTime = this->now();
@@ -219,6 +239,8 @@ private:
             speeds = WheelSpeeds{0.0, 0.0, 0.0, 0.0};
             currentSpeeds_ = speeds;
         }
+
+        speeds = applyDriveSafetyProfile(speeds);
 
         const double dt =
             (currentTime - lastTime_).seconds();
@@ -302,7 +324,8 @@ private:
         // aby dodatnie steering dawało dodatnie yaw.
         const double angularVelocity =
             (leftVelocity - rightVelocity) /
-            TRACK_WIDTH;
+            TRACK_WIDTH *
+            (workMode_ == "snow_clearing" ? SNOW_ANGULAR_SCALE : 1.0);
 
         x_ +=
             linearVelocity *
@@ -380,7 +403,8 @@ private:
 
         const double angularVelocity =
             (leftVelocity - rightVelocity) /
-            TRACK_WIDTH;
+            TRACK_WIDTH *
+            (workMode_ == "snow_clearing" ? SNOW_ANGULAR_SCALE : 1.0);
 
         tf2::Quaternion quaternion;
 

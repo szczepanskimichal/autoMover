@@ -79,9 +79,15 @@ The current teleop model is incremental:
 
 - `w` and `s` adjust forward speed
 - `a` and `d` adjust turn rate
+- `1`, `2`, `3` switch work mode between manual, mowing, and snow clearing
+- `b`, `n`, `t`, `r`, `f`, `g`, `h` manage tool profile, power, and angle
+- `e` toggles emergency stop
 - `x` or `space` resets motion to zero
 
 That makes the host-side wrapper simpler and avoids the jerky one-shot command pattern from the earlier shell version.
+
+This file now also acts as the keyboard-side operator console for the current
+winter workflow, not just a raw `/cmd_vel` sender.
 
 ### `ros2_ws/src/automower_description`
 
